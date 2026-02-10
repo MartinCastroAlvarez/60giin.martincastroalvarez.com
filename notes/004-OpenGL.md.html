@@ -1,0 +1,68 @@
+<meta charset="utf-8">
+**60GIIN - 004 - OpenGL**
+    <small>©2026 VIU - 60GIIN Programación Gráfica - Iván Fuertes</small>
+
+# Introducción
+
+*OpenGL* es considerada una API (Aplication Programming Interface) que provee un conjunto de instrucciones que se pueden usar para manipular gráficos e imágenes. Sin embargo, como tal no es una API, sino una simple especificación, desarrollada y mantenida por [Khronos](https://www.khronos.org/).
+
+Especifica exactamente cuál debe ser el resultado de cada función y como debe llevarse a cabo, pero es trabajo de los desarrolladores implementar esta especificación y encontrar una solución a cómo deben operar estas funciones, por tanto, hay diferentes implementaciones en función de cada desarrollador. Los desarrolladores de las librerías de *OpenGL* suelen ser los fabricantes de las tarjetas gráficas. Cada tarjeta gráfica soporta versiones específicas de *OpenGL*, que han sido desarrolladas específicamente para ese hardware en concreto. Por norma, cuando *OpenGL* muestra algún comportamiento extraño suele ser provocado por una mala implementación de los drivers, y suele solucionarse actualizándolos a las últimas versiones.
+
+En la web de *Khronos* se pueden encontrar los documentos de todas las especificaciones de *OpenGL*, concretamente la [3.3](https://registry.khronos.org/OpenGL/specs/gl/glspec33.core.pdf). Existe una web donde se puede consultar la referencia con todas sus llamadas, [documentación *OpenGL*](https://docs.gl/).
+
+# Perfiles
+
+Antiguamente usar *OpenGL* suponía usar el perfil inmediato o pipeline de función fija. Era un método fácil para pintar gráficos, la mayoría de la funcionalidad de *OpenGL* estaba escondida en la librería, pero esa facilidad suponía que no hubiera mucha libertad sobre como se realizaban sus cálculos. Con el paso del tiempo, los desarrolladores empezaron a demandar más control y eficiencia de la librería, con lo cual, el perfil inmediato se desechó (a partir de la versión 3.2) y se empezó a usar el perfil core.
+
+El perfil core fuerza a *OpenGL* a usar prácticas modernas, flexibles y eficientes, pero es más difícil de aprender. El perfil inmediato abstraía muchas de las operaciones que realizaba *OpenGL* y a la vez que era fácil de aprender, era difícil captar como operaba. La aproximación moderna requiere que el desarrollador entienda de verdad *OpenGL* y la programación gráfica, y pese a su dificultad, permite mucha mayor flexibilidad, más eficiencia y sobre todo un mejor entendimiento de la programación gráfica.
+
+Hoy en día, la última versión de *OpenGL* disponible es la 4.6. En este curso se usa la versión 3.3 porque el núcleo permanece intacto, básicamente se le han ido añadiendo nuevas características, y maneras más eficientes de realizar las mismas tareas. Pero todas las técnicas y conceptos son las mismas sobre el perfil core. Además, hay que tener en cuenta que solo las tarjetas gráficas más modernas soportan las últimas versiones de *OpenGL* y eso restringe el número de equipos donde las aplicaciones que se desarrollen puedan ejecutarse, por eso se suele apuntar siempre a versiones bajas de *OpenGL* y opcionalmente habilitar alguna funcionalidad más elevada.
+
+# Extensiones
+
+Una característica importante de *OpenGL* es el soporte a extensiones. Cuando alguien aparece con una nueva técnica o una gran optimización en el pintado, habitualmente se suele encontrar en una extensión implementada en los drivers. Si el hardware en el que se ejecuta una aplicación soporta una extensión que el desarrollador puede aprovechar y usar su funcionalidad para gráficos más avanzados o eficientes. De esta manera un programador gráfico puede usar las técnicas más avanzadas sin tener que esperar a que se incluyan en futuras versiones de *OpenGL*, simplemente verificando que la extensión deseada esté soportada por la tarjeta gráfica.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++ linenumbers
+if (GL_ARB_extension_name) {
+  // Make use of the extension
+} else {
+  // Extension not supported, do it the old way
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [extension]: Detectar si se soporta una extensión determinada]
+
+# Maquina de estados
+
+*OpenGL* está montado como una gran máquina de estados, una colección de variables que definen como debe operar la librería en un momento dado. El estado de *OpenGL* suele ser conocido como el contexto. Cuando se usa *OpenGL*, se suele cambiar su estado cambiando ciertas opciones, manipulando algunos buffers y entonces pintar usando el contexto actual en ese momento.
+
+Cuando se le dice a *OpenGL* que pinte líneas en lugar de triángulos, en realidad se le cambia el estado a *OpenGL* cambiando alguna variable del contexto que determina como se debería pintar. Tan pronto como se cambia el estado diciéndole a *OpenGL* que debería pintar líneas, las llamadas a pintado sucesivas pintarán líneas en lugar de triángulos.
+
+Al trabajar con *OpenGL* existen dos tipos de funciones, las que cambian el estado o contexto, y las que usan ese contexto en un momento determinado para realizar operaciones. Es importante tener en cuenta que *OpenGL* es básicamente una gran máquina de estados.
+
+# Objetos
+
+Las librerías de *OpenGL* suelen estar escritas en C (no C++) y permiten muchas derivaciones a otros lenguajes, pero en el núcleo es una librería de C. Puesto que muchas de las construcciones de C no se traducen bien a otros lenguajes de alto nivel, *OpenGL* fue desarrollado con algunas abstracciones, una de ellas son los objetos.
+
+Un objeto en *OpenGL* es una colección de opciones que representa un subconjunto del estado de *OpenGL*.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++ linenumbers
+unsigned int objectId = 0;
+glGenObject(1, &objectId);  // create object
+
+glBindObject(GL_WINDOW_TARGET, objectId);  // bind object to context
+
+// set options of object currently bound to GL_WINDOW_TARGET
+glSetObjectOption(GL_WINDOW_TARGET, GL_OPTION_WINDOW_WIDTH, 800);
+glSetObjectOption(GL_WINDOW_TARGET, GL_OPTION_WINDOW_HEIGHT, 600);
+
+glBindObject(GL_WINDOW_TARGET, 0);  // set context target back to default
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [objects]: Construcción de objetos en *OpenGL*]
+
+Esta es una construcción típica en *OpenGL*. Primero se crea un objeto y se guarda una referencia a él como un `id`, el objeto real se suele guardar en la *GPU* entre bambalinas. Entonces se enlaza el objeto a la localización de destino del contexto, en el ejemplo, ese destino está definido como `GL_WINDOW_TARGET`. A continuación, se fijan las opciones del objeto, y por último se desenlaza el objeto volviendo a poner el `id` del objeto del contexto a 0. Las opciones se han fijado en el objeto referenciado por `objectId` y se pueden volver a recuperar tan pronto como se vuelva a enlazar el objeto de vuelta al destino `GL_WINDOW_TARGET`.
+
+La parte buena de este sistema es que se pueden definir varios objetos en la aplicación, fijar sus opciones y cuando haya que empezar una operación que usa el estado de *OpenGL*, enlazar el objeto con las opciones ya fijadas. Hay objetos que pueden actuar como contenedores para modelos en 3D, y cuando haya que pintar uno de esos modelos, se enlaza el objeto que contiene los datos del modelo y se llama a la función de pintar. Tener muchos objetos permite tener muchos modelos y cuando hay que pintar uno en concreto simplemente se enlaza el objeto correspondiente antes de pintar sin tener que rellenar todas las opciones cada vez.
+
+<link rel="stylesheet" href="res/md/viu.css">
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'long'};</script>
+<!-- Markdeep: --><script src="res/md/markdeep.min.js?" charset="utf-8"></script>

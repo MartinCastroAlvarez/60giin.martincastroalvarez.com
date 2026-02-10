@@ -1,0 +1,114 @@
+<meta charset="utf-8">
+**60GIIN - 001 - Introducción**
+    <small>©2026 VIU - 60GIIN Programación Gráfica - Iván Fuertes</small>
+
+# Introducción
+
+En muchas simulaciones la parte más importante es la representación gráfica del mundo virtual que intenta simular, pero no deja de ser una parte más de cualquier motor de videojuegos. El render 3D en tiempo real es un tema complejo y profundo, el objetivo de este curso es proveer un conocimiento básico de la tecnología necesaria y servir de punto de inicio hacia temas más avanzados.
+
+Empieza con una base de los conceptos, teoría y las matemáticas que subyacen en cualquier motor gráfico. A continuación, se muestra el pipeline software y hardware que convierte esos conceptos teóricos en realidad. Y, por último, se proponen las técnicas de renderizado y modelos de iluminación más básicos.
+
+Existen varias especificaciones que definen APIs de librerías gráficas, dependiendo de la plataforma dondese vaya a desarrollar la simulación o motor, hay algunas alternativas, siendo las más comunes para desarrollo en Windows: *OpenGL*, DirectX o Vulkan. Aquí se va a trabajar con *OpenGL*, siendo multiplataforma y la más extendida como garantía de su idoneidad.
+
+El mundo de la simulación de entornos realistas es sin duda apasionante. Se tocan muchos temas diversos y todos desde una perspectiva única que una vez conjuntados forman una de las mejores experiencias multimedia posibles. Pero no es un mundo fácil, a menudo se convierte en un monstruo de muchas cabezas que intentan morder continuamente a los programadores que están luchando contra ellas intentando llegar
+a buen puerto. La programación gráfica en particular es un tema muy profundo y con múltiples ramificaciones, a cada cual más interesante, aquí solo se verá la base, pero hay mucho más, desde técnicas avanzadas como el deferred rendering o el physically based rendering, a modelos de iluminación dinámica complejos, efectos como el parallax mapping, pasando por efectos de postproceso como el bloom. Pero
+esto es solo una pequeña parte de lo que supone un motor gráfico completo, hay que trabajar también en sistemas del núcleo, como gestores de memoria, gestores de recursos, sistemas de soporte para inteligencia artificial, motores de sonido, sistemas de partículas,... hay docenas de subsistemas donde trabajar en un motor gráfico. Para por último llegar al último escalón, la implementación en sí de la propia
+lógica de la simulación soportado por todos los sistemas del motor.
+
+Y todo ello siempre con una espada de Damocles colgando encima del programador, todo tiene que funcionar rápido, suave y fluido. Hay que estar pendiente no solo de que funcione, sino que lo haga de la mejor manera en todos los sistemas físicos posibles.
+
+# Prerrequisitos
+
+Puesto que *OpenGL* es una API gráfica y no una plataforma en sí misma, requiere de un lenguaje para trabajar con ella. El más habitual en el mundo de la programación gráfica es C++, por su cercanía a la CPU es considerado uno de los más rápidos, algo esencial al tratar con cualquier tema relacionado con tiempo real, como es este caso. Además, es un lenguaje moderno, maduro y soporta multitud de
+librerías avanzadas.
+
+Por ello un conocimiento medio de C++ es imprescindible para completar esta asignatura. Sería aconsejable seguir algún tutorial o libro dedicado a esta materia si no se posee suficiente experiencia. Se recomiendan los siguientes enlaces:
+
+- [Learn CPP](http://www.learncpp.com/)
+- [C Con Clase](http://c.conclase.net)
+
+En cuanto a bibliografía, si no se posee ninguna experiencia en programación se recomienda Stroustrup (2014). En caso de tener previa experiencia en algún lenguaje de programación orientado a objetos se recomienda Lippman, Lajoie y Moo (2012) o Stroustrup (2022). Para mejorar el conocimiento en C++ se recomienda Meyers (2014).
+
+# Bibliografía
+
+## C++
+
+- Gamma, E., Helm, R., Johnson, R. & Vlissides, J. (1995). **Design Patterns, Elements of Reusable Object-Oriented Software**. Boston: Addison-Wesley Professional.
+
+- Kernighan, B. & Ritchie, D. (1988). **C Programming Language (2nd Edition)**. New Jersey: Prentice Hall.
+
+- Koenig, A. & Moo, B. (2000). **Accelerated C++: Practical Programming by Example**. Boston: Addison-Wesley Professional.
+
+- Meyers, S. (2014). **Effective Modern C++: 42 Specific Ways to Improve Your Use Of C++11 and C++14**. Sebastopol: O’Reilly Media.
+
+- Stanley B. Lippman, Josée Lajoie, Barbara E. Moo. (2012). **C++ Primer (5th Edition)**. Boston: Addison-Wesley Professional.
+
+- Stroustrup, B. (2022). **A Tour of C++ (3rd Edition)**. Boston: Addison-Wesley Professional.
+
+- Stroustrup, B. (2014). **Programming: Principles and Practice Using C++ (2nd Edition)**. Boston: Addison-Wesley Professional.
+
+## Programación Gráfica
+
+- Akenine-Möller, T., Haines, E. & Hoffman, N. (2018). **Real-Time Rendering (4th Edition)**. Natick: AKPeters/CRC Press.
+
+- Bailey, M. & Cunningham, S. (2011). **Graphic Shaders, Theory and Practice (2nd Edition)**. Natick: AKPeters/CRC Press.
+
+- Hughes, J. F. (2009). **Computer Graphics: Principles and Practice (3rd Edition)**. Boston: Addison-Wesley Professional.
+
+- Kessenich, J., Sellers, G. & Shreiner, D. (2016). ***OpenGL* Programming Guide, The Official Guide To Learning *OpenGL*, v 4.5 (9th Edition)**. Boston: Addison Wesley.
+
+- Lengyel, E. (2016). **Foundations of Game Engine Development, Volume 1: Mathematics**. Boston: Terathon Software LLC.
+
+- Lengyel, E. (2019). **Foundations of Game Engine Development, Volume 2: Rendering**. Boston: Terathon Software LLC.
+
+- Lengyel, E. (2011). **Mathematics For 3D Game Programming and Computer Graphics (3rd Edition)**. Boston: Cengage Learning PTR.
+
+- Rost, R.J & Licea-Kane, B.M. (2009). ***OpenGL* Shading Language (3rd Edition)**. Boston: Addison-Wesley Professional.
+
+- Wright, R. & Haemel, N. (2015). ***OpenGL* Superbible, Comprehensive Tutorial and Reference (7th Edition)**. Boston: Addison Wesley.
+
+## Motores Gráficos de Videojuegos
+
+- Gregory, J. (2018). **Game Engine Architecture (3rd Edition)**. Natick: AKPeters/CRC Press.
+
+- McShaffry, M. & Graham, D. (2012). **Game Coding Complete (4th Edition)**. Boston: Delmar Cengage Learning.
+
+- Nystrom, R. (2014). **Game Programming Patterns**. Tennessee: Lightning Source Inc.
+
+- Sanglard, F. (2019). **Game Engine Black Book: DOOM**. Independent.
+
+- Sanglard, F. (2017). **Game Engine Black Book: Wolfenstein**. Independent.
+
+# Enlaces
+
+## C++
+
+- [LearnCPP](http://www.learncpp.com/)
+- [C Con Clase](http://c.conclase.net/)
+- [CPP Reference](http://en.cppreference.com)
+- [C Plus Plus](http://www.cplusplus.com/)
+- [Iso CPP](https://isocpp.org/)
+- [CMake](https://cmake.org/)
+- [Sean Barret](https://github.com/nothings/)
+
+## Programación Gráfica
+
+- [GLFW](https://www.glfw.org/)
+- [GLAD](https://glad.dav1d.de/)
+- [GLM](https://glm.g-truc.net/0.9.9/index.html)
+- [*OpenGL* Extensions Viewer](http://realtech-vr.com/admin/glview)
+- [Kronos Group](https://www.khronos.org/)
+- [*OpenGL* 3.3 Spec](https://www.khronos.org/registry/*OpenGL*/specs/gl/glspec33.core.pdf)
+- [*OpenGL* Docs](http://docs.gl/)
+- [Materiales *OpenGL*](http://devernay.free.fr/cours/*OpenGL*/materials.html)
+- [*OpenGL*](https://open.gl/)
+- [*OpenGL* Tutorial](http://www.*OpenGL*-tutorial.org/es/)
+- [Anton´s *OpenGL*4 Tutorials](http://antongerdelan.net/*OpenGL*/index.html)
+
+## Motores Gráficos de Videojuegos
+
+- [Game Programming Patterns](http://gameprogrammingpatterns.com/index.html)
+
+<link rel="stylesheet" href="res/md/viu.css">
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'long'};</script>
+<!-- Markdeep: --><script src="res/md/markdeep.min.js?" charset="utf-8"></script>

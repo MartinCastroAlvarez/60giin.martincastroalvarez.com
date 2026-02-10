@@ -1,0 +1,683 @@
+<meta charset="utf-8">
+**60GIIN - 002 - Matemáticas 3D**
+    <small>©2026 VIU - 60GIIN Programación Gráfica - Iván Fuertes</small>
+
+# Intro
+
+Una simulación, como tal, tiene su base en un modelo matemático, por eso, las matemáticas están muy presentes en su desarrollo. Prácticamente todas las ramas de las matemáticas se usan de una u otra manera, trigonometría, cálculo, álgebra, estadística… Sin embargo, el álgebra lineal 3D es la parte que más se usa dentro de un motor gráfico. Para profundizar en la materia se recomienda Lengyel (2011).
+
+# Puntos y vectores
+
+Un mundo virtual suele estar compuesto de muchos objetos tridimensionales y, por tanto, el videojuego necesita gestionar las posiciones, orientaciones y escalas de todos esos objetos, animarlos y transformarlos en el espacio de pantalla para que se puedan pintar en pantalla. Esos objetos suelen estar formados por triángulos, y sus vértices representados por puntos.
+
+## Puntos y coordenadas cartesianas
+
+Un punto es una localización en un espacio n-dimensional. El sistema de coordenadas cartesiano es el más habitual. Usa dos o tres ejes perpendiculares para especificar una posición en el espacio 2D o 3D. Así, un punto es representado por dos o tres números reales.
+
+![Figure [res/002_000]: Punto 3D en coordenadas cartesianas `P(a,b,c)` o `P(x,y,z)`](res/002_000.png)
+
+Otros sistemas menos habituales son el sistema de coordenadas polares, cilíndricas y esféricas.
+
+### Coordenadas polares
+
+En 2D un punto se representa con 2 coordenadas, la primera es el radio desde el origen y la segunda el ángulo θ respecto del eje considerado como polar.
+
+Para convertir de coordenadas cartesianas a polares:
+
+\begin{equation}
+r = \sqrt{x^2 + y^2}\\
+\theta = \tan^{-1}(\frac{y}{x})\\
+\end{equation}
+
+Y de polares a cartesianas:
+
+\begin{equation}
+x = r \cdot \cos{\theta}\\
+y = r \cdot \sin{\theta}\\
+\end{equation}
+
+![Figure [res/002_001]: Punto en 2D en coordenadas polares `P(r,θ)`](res/002_001.png)
+
+### Coordenadas cilíndricas
+
+Un punto se representa con 3 coordenadas, la primera es el radio, la segunda el ángulo Φ y la tercera la altura, dentro de un cilindro definido por los ejes.
+
+Para convertir de coordenadas cartesianas a cilíndricas:
+
+\begin{equation}
+r = \sqrt{x^2 + y^2}\\
+\phi = \tan^{-1}(\frac{y}{x})\\
+z = z\\
+\end{equation}
+
+Y de cilíndricas a cartesianas:
+
+\begin{equation}
+x = r \cdot \cos{\phi}\\
+y = r \cdot \sin{\phi}\\
+z = z\\
+\end{equation}
+
+![Figure [res/002_002]: Punto en 3D en coordenadas cilíndricas `P(r,Φ,z)`](res/002_002.png)
+
+### Coordenadas esféricas
+
+Un punto se representa con 3 coordenadas, donde la primera es el radio, la segunda es la latitud θ y tercera es la longitud Φ, dentro de una esfera con centro en (0, 0, 0).
+
+Para convertir de coordenadas cartesianas a esféricas:
+
+\begin{equation}
+r = \sqrt{x^2 + y^2 + z^2}\\
+\theta = \tan^{-1}(\frac{z}{\sqrt{x^2 + y^2}})\\
+\phi = \tan^{-1}(\frac{y}{x})\\
+\end{equation}
+
+Y de esféricas a cartesianas:
+
+\begin{equation}
+x = r \cdot \sin(theta) \cdot \cos{\phi}\\
+y = r \cdot \sin(\theta) \cdot \sin{phi}\\
+z = r \cdot \cos(theta)\\
+\end{equation}
+
+![Figure [res/002_003]: Punto 3D en coordenadas esféricas `P(r,θ,Φ)`](res/002_003.png)
+
+Por norma general se usa el sistema de coordenadas cartesianas, pero algunos problemas se pueden solucionar de manera mucho más simple usando el sistema que mejor se ajuste. Por ejemplo, en 2D mover un punto a lo largo de una espiral es mucho más sencillo si se usan coordenadas polares, basta ir reduciendo el radio mientras se va moviendo el ángulo.
+
+## Sistema de mano izquierda/derecha
+
+Suelen haber dos maneras de ordenar los tres ejes perpendiculares, mano izquierda y mano derecha. La única diferencia entre ambos es la dirección a la que apunta el eje Z. Si el eje Y apunta hacia arriba y el X apunta hacia la derecha, entonces el eje Z apunta hacia nosotros en un sistema mano derecha, y apunta lejos de nosotros en un sistema mano izquierda. Se llaman así porque se puede usar la mano para determinar hacia donde apunta la Z con el dedo corazón si se usa el pulgar como X y el índice como Y.
+
+![Figure [res/002_004]: Sistema mano izquierda / derecha](res/002_004.png)
+
+El uso de uno u otro sistema no cambia las reglas matemáticas, solo cambia la interpretación de los números. En OpenGL se suele usar la regla de la mano derecha y es la que se usará aquí.
+
+## Vectores
+
+Un vector es una cantidad que tiene magnitud (longitud) y dirección, se interpreta como un segmento dirigido desde un punto llamado cola a otro punto llamado cabeza. Se representa con dos o tres números reales. La distinción entre punto y vector es bastante sutil, técnicamente un vector es un desplazamiento relativo a un punto conocido. Por norma, en programación se usa el término vector para referirse a ambos (puntos y vectores), pero hay que tener muy en consideración la diferencia entre ambos, puesto que más adelante se verá cómo deben ser tratados de manera distinta al convertirlos a coordenadas homogéneas.
+
+![Figure [res/002_005]: Vector 3D `v(x,y,z)`](res/002_005.png)
+
+### Multiplicación por escalar
+
+Se realiza multiplicando cada componente individual del vector por el escalar y tiene el efecto de escalar la magnitud del vector.
+
+\begin{equation}
+\vec{a} \cdot s = (a_x \cdot s , a_y \cdot s )\\
+\end{equation}
+
+![Figure [res/002_006]: Vector multiplicado por 2 y por -1](res/002_006.png width="200px")
+
+### Suma y resta de vectores
+
+La suma de dos vectores está definida como el vector cuyos componentes son las sumas de los componentes de los dos vectores originales. Se visualiza como situar la cabeza del primer vector en la cola del segundo vector, la suma es entonces el vector desde la cola del primer vector a la cabeza del segundo.
+
+\begin{equation}
+\vec{a} + \vec{b} = (a_x + b_x , a_y + b_y)\\
+\end{equation}
+
+![Figure [res/002_007]: Suma de dos vectores](res/002_007.png width="200px")
+
+La resta no es más que la suma de a y -b, se realiza restando las componentes de a y b.
+
+\begin{equation}
+\vec{a} - \vec{b} = (a_x - b_x , a_y - b_y)\\
+\end{equation}
+
+![Figure [res/002_008]: Resta de dos vectores](res/002_008.png width="200px")
+
+### Suma y resta de puntos y vectores
+
+Las operaciones que tienen sentido entre puntos y vectores son:
+- Vector + Vector = Vector
+- Vector - Vector = Vector
+- Punto + Vector = Punto
+- Punto - Punto = Vector
+- Punto + Punto = Sin Sentido
+
+![Figure [res/002_009]: Cabeza(Punto) - Cola(Punto) = Vector](res/002_009.png)
+
+### Longitud
+
+La longitud de un vector es un escalar que representa su magnitud como sería medida en el espacio. Se usa el teorema de Pitágoras para calcularlo.
+
+\begin{equation}
+|\vec{a}| = \sqrt{a^2_x + a^2_y}
+\end{equation}
+
+![Figure [res/002_010]: Longitud de un vector en 2D](res/002_010.png)
+
+### Aplicación de operaciones
+
+Con solo estas operaciones ya se pueden resolver muchos problemas.
+
+Por ejemplo, si se tiene la posición de un personaje manejado por la IA, $P_1$ y un vector que representa su velocidad $\vec{v}$, se puede calcular su posición en el siguiente frame $P_2$ escalando el vector velocidad por el intervalo de tiempo de ese frame $\Delta t$, y luego sumándolo a la posición actual.
+
+\begin{equation}
+P_2 = P_1 + (\vec{v} \cdot \Delta t)
+\end{equation}
+
+### Normalización y vectores unitarios
+
+Un vector unitario es aquel que tiene una longitud de 1. Obtener el vector unitario a partir de un vector se llama normalización, y se obtiene dividiendo cada componente del vector por su longitud.
+
+\begin{equation}
+\vec{u} = \frac{\vec{v}}{|\vec{v}|}
+\end{equation}
+
+### Vectores normales
+
+Un vector es normal a una superficie si es perpendicular a la misma. En programación gráfica son muy útiles a la hora de determinar la dirección de las superficies relativas a la dirección de los rayos de luz que inciden sobre ellas, cuando se hacen cálculos de iluminación.
+
+Los vectores normales suelen tener longitud 1, pero no es necesario. Es importante tener clara la diferencia entre vectores normales y normalizados.
+
+![Figure [res/002_011]: Vector normal a un plano](res/002_011.png)
+
+### Producto escalar
+
+Los vectores se pueden multiplicar entre ellos, pero hay diversos tipos de multiplicación entre vectores. Se suelen usar el producto escalar y el vectorial.
+
+El producto escalar entre dos vectores da como resultado un escalar, definido como la suma de los productos de los componentes de cada vector:
+
+\begin{equation}
+\vec{a} \cdot \vec{b} = a_x \cdot b_x + a_y \cdot b_y
+\end{equation}
+
+También puede ser escrito como el producto de las longitudes de los dos vectores y el coseno del ángulo entre ellos:
+
+\begin{equation}
+\vec{a} \cdot \vec{b} = |\vec{a}| \cdot |\vec{b}| \cdot \cos{\theta}
+\end{equation}
+
+El producto escalar es conmutativo y distributivo respecto de la suma:
+
+\begin{equation}
+\vec{a} \cdot \vec{b} = \vec{b} \cdot \vec{a}
+\end{equation}
+
+\begin{equation}
+\vec{a} \cdot (\vec{b} + \vec{c}) = \vec{a} \cdot \vec{b} + \vec{a} \cdot \vec{c}
+\end{equation}
+
+Si $\vec{u}$ es un vector unitario, entonces el producto escalar $(\vec{a} \cdot \vec{u})$ representa la longitud de la proyección del vector $\vec{a}$ sobre la línea infinita definida por la dirección de $\vec{u}$.
+
+![Figure [res/002_012]: Proyección de un vector sobre otro usando el producto escalar](res/002_012.png)
+
+La longitud cuadrada de un vector se puede calcular como el producto escalar de un vector consigo mismo, para obtener la longitud entonces basta con realizar la raíz cuadrada del producto escalar. Si bien la longitud cuadrada se suele usar muy a menudo puesto que para comparar distancias suele ser suficiente y se ahorra el coste de realizar la raíz cuadrada (suele ser alto).
+
+El producto escalar se suele usar para determinar si dos vectores son colineales o perpendiculares, así como si apuntan hacia direcciones similares u opuestas. Dados dos vectores $\vec{a}$ y $\vec{b}$, se suelen usar los siguientes test:
+
+- Colineales, $\vec{a} \cdot \vec{b} = |\vec{a}| \cdot |\vec{b}|$ el ángulo entre ellos es exactamente 0 grados. Cuando $\vec{a}$ y $\vec{b}$ son vectores unitarios el producto escalar es 1.
+
+![Figure [res/002_013]: Vectores colineales](res/002_013.png width="100px")
+
+- Colineales pero opuestos, $\vec{a} \cdot \vec{b} = -\vec{a} \cdot \vec{b}$ el ángulo entre ellos es de 180 grados. Cuando $\vec{a}$ y $\vec{b}$ son vectores unitarios el producto escalar es -1.
+
+![Figure [res/002_014]: Vectores colineales opuestos](res/002_014.png width="100px")
+
+- Perpendiculares, $\vec{a} \cdot \vec{b} = 0$ el ángulo entre ellos es de 90 grados.
+
+![Figure [res/002_015]: Vectores perpendiculares](res/002_015.png width="100px")
+
+- Misma dirección, $\vec{a} \cdot \vec{b} > 0$ el ángulo entre ellos es menor de 90 grados.
+
+![Figure [res/002_016]: Vectores con la misma dirección](res/002_016.png width="100px")
+
+- Direcciones opuestas, $\vec{a} \cdot \vec{b} < 0$ el ángulo entre ellos es mayor de 90 grados.
+
+![Figure [res/002_017]: Vectores con direcciones opuestas](res/002_017.png width="100px")
+
+### Aplicaciones del producto escalar
+
+Para averiguar si un enemigo está enfrente de un jugador o detrás, se puede calcular un vector desde la posición del jugador $P$, hasta la posición del enemigo $E$ con una simple resta de puntos $\vec{v} = E- P$ y se tiene un vector $\vec{f}$ apuntando en la dirección hacia donde está mirando el jugador (forward). El producto escalar $d = \vec{v} \cdot \vec{f}$ será positivo si el enemigo está enfrente del jugador y negativo si está detrás.
+
+### Producto vectorial
+
+El producto vectorial de dos vectores produce otro vector que es perpendicular a los dos vectores multiplicados. Solo está definido en 3 dimensiones.
+
+\begin{equation}
+\vec{a} \times \vec{b} = (a_y \cdot b_z - a_z \cdot b_y, a_z \cdot b_x - a_x \cdot b_z, a_x \cdot b_y - a_y \cdot b_x)
+\end{equation}
+
+![Figure [res/002_018]: Producto vectorial](res/002_018.png width="150px")
+
+También puede ser escrito como el producto de las longitudes de los dos vectores y el seno del ángulo entre ellos y $\vec{n}$ como un vector unitario perpendicular al plano que contiene $\vec{a}$ y $\vec{b}$, siguiendo la regla de la mano derecha.
+
+\begin{equation}
+\vec{a} \times \vec{b} = |\vec{a}| \cdot |\vec{b}| \cdot \sin{\theta} \cdot \vec{n}
+\end{equation}
+
+La longitud del producto vectorial es igual al área del paralelogramo definido por $\vec{a}$ y $\vec{b}$, y puesto que el área de un triangulo es la mitad de la de un paralelogramo, el área del triángulo cuyos vértices están definidos por $\vec{a}$ y $\vec{b}$ resulta en:
+
+\begin{equation}
+A = \frac{1}{2} \cdot |\vec{a} \times \vec{b}|
+\end{equation}
+
+![Figure [res/002_019]: Área del paralelogramo](res/002_019.png width="150px")
+
+Se puede saber la dirección del producto vectorial usando la regla de las manos, su dirección la apunta el pulgar si se cierran los demás dedos en torno al vector $\vec{a}$ primero y luego al vector $\vec{b}$.
+
+Es anti conmutativo y distributivo respecto a la suma:
+
+\begin{equation}
+\vec{a} \times \vec{b} = -(\vec{b} \times \vec{a})
+\end{equation}
+
+\begin{equation}
+\vec{a} \times (\vec{b} + \vec{c}) = \vec{a} \times \vec{b} + \vec{a} \times \vec{c}
+\end{equation}
+
+### Aplicaciones del producto vectorial
+
+El uso más común es para encontrar vectores perpendiculares a otros dos vectores. Por ejemplo, a la hora de encontrar un vector normal a la superficie de un triángulo al realizar cálculos de iluminación.
+
+# Matrices
+
+Una matriz es una cuadricula rectangular de m x n escalares. Son una manera óptima de representar transformaciones lineales tales como traslaciones, rotaciones y escalados. Cada escalar dentro de la matriz suele nombrarse con dos subscriptores representando la fila y columna. En este caso una matriz cuadrada de 3x3 elementos:
+
+\begin{equation}
+M_{3x3} =
+\begin{bmatrix}
+M_{11} & M_{12} & M_{13}\\
+M_{21} & M_{22} & M_{23}\\
+M_{31} & M_{32} & M_{33}
+\end{bmatrix}
+\end{equation}
+
+En una matriz 3x3 se pueden interpretar las columnas y filas como vectores 3D, cuando todas las filas y columnas de una matriz 3x3 tienen longitud 1, entonces es una matriz ortonormal, estas matrices representan rotaciones puras.
+
+Bajo ciertas circunstancias una matriz 4x4 puede representar transformaciones 3D arbitrarias, como traslaciones, rotaciones y cambios de escala. Estas son las matrices de transformación, que son las más usadas en programación gráfica. Las transformaciones se aplican a un vector o punto mediante la multiplicación de matrices.
+
+Una matriz afín es una matriz de transformación 4x4 que conserva el paralelismo de las líneas y las distancias relativas, pero no necesariamente las longitudes absolutas y ángulos. Una matriz afín es cualquier combinación de las siguientes operaciones rotación, traslación, escala y/o shear.
+
+## Multiplicación de matrices
+
+El producto $P$ de dos matrices $A$ y $B$ se escribe como $P = A \cdot B$. Si $A$ y $B$ son matrices de transformación, entonces el producto $P$ es otra matriz de transformación que ejecuta ambas transformaciones originales. Por ejemplo, si $A$ es una matriz de escalado y $B$ es una matriz de rotación, entonces $P$ escalaría y rotaría los puntos o vectores a los cuales se aplique. Esta propiedad es muy útil, puesto que permite pre calcular una sola matriz que ejecute una secuencia de transformaciones y aplicarlas de una sola vez a un gran número de vectores de manera eficiente.
+
+Para calcular el producto de una matriz se cogen los productos escalares entre las filas de la matriz $A n_a x m_a$ y las columnas de la matriz $B n_b x m_b$, cada producto escalar forma un componente de la matriz resultante $P$. Las dos matrices serán multiplicables si las dimensiones internas son iguales, en el caso de $A \cdot B$ si $m_a=n_b$.
+
+\begin{equation}
+P_{3x3} =
+\begin{bmatrix}
+P_{11} & P_{12} & P_{13}\\
+P_{21} & P_{22} & P_{23}\\
+P_{31} & P_{32} & P_{33}
+\end{bmatrix}
+=
+\begin{bmatrix}
+A_{fila1} \cdot B_{col1} & A_{fila1} \cdot B_{col2} & A_{fila1} \cdot B_{col3} \\
+A_{fila2} \cdot B_{col1} & A_{fila2} \cdot B_{col2} & A_{fila2} \cdot B_{col3} \\
+A_{fila3} \cdot B_{col1} & A_{fila3} \cdot B_{col2} & A_{fila3} \cdot B_{col3}
+\end{bmatrix}
+\end{equation}
+
+La multiplicación de matrices no es conmutativa, por tanto, el orden en el cual se realiza la multiplicación importa.
+
+\begin{equation}
+A \cdot B \neq B \cdot A
+\end{equation}
+
+## Puntos, vectores y matrices
+
+Los puntos y vectores se pueden representar como una matriz columna $(n x 1)$, donde $n$ es la dimensión en la que se está trabajando.
+
+\begin{equation}
+\vec{v} = (x,y,z) \equiv \vec{v_{3x1}} = \begin{bmatrix}
+x\\
+y\\
+z
+\end{bmatrix}
+\end{equation}
+
+Para multiplicar una matriz cuadrada $(n x n)$ por un vector columna $(n x 1)$, el vector debe aparecer a la derecha de la matriz para poder realizar la multiplicación correctamente.
+
+\begin{equation}
+\vec{v^1}=M_{nxn} \cdot \vec{v}_{nx1}
+\end{equation}
+
+Si varias matrices de transformación A, B, C se aplican en orden a un vector, las transformaciones se ejecutan de derecha a izquierda. La forma de recordarlo es pensar que la matriz que primero se aplica es la más cercana al vector.
+
+\begin{equation}
+\vec{v^1}=C_{nxn} \cdot B_{nxn} \cdot A_{nxn} \cdot \vec{v}_{nx1}
+\end{equation}
+
+## Matriz identidad
+
+La matriz identidad es aquella que cuando se multiplica por otra matriz devuelve esa misma matriz. Se suele representar por $I$. Siempre es una matriz cuadrada con unos en la diagonal principal y ceros en el resto.
+
+\begin{equation}
+I_{3x3} =
+\begin{bmatrix}
+1 & 0 & 0\\
+0 & 1 & 0\\
+0 & 0 & 1
+\end{bmatrix}
+\end{equation}
+
+\begin{equation}
+A \cdot I = I \cdot A = A
+\end{equation}
+
+## Inversión de matrices
+
+La inversa de una matriz $A$ es otra matriz $A^{-1}$ que deshace los efectos de $A$. Por ejemplo, si una matriz escala objetos al doble de su tamaño entonces la inversa de esa matriz los escala a la mitad de su tamaño. Cuando una matriz es multiplicada por su inversa el resultado es siempre la matriz identidad.
+
+\begin{equation}
+A \cdot A^{-1} = A^{-1} \cdot A = I
+\end{equation}
+
+Es importante recordar que la inversa de una secuencia de matrices concatenadas es la concatenación inversa de las matrices inversas individuales.
+
+\begin{equation}
+(A \cdot B \cdot C)^{-1} =  C^{-1} \cdot B^{-1} \cdot A^{-1}
+\end{equation}
+
+## Transposición
+
+La matriz transpuesta de una matriz se obtiene reflejando los componentes de dicha matriz a través de su diagonal, las columnas de la matriz original se convierten en las filas de la traspuesta y viceversa.
+
+\begin{equation}
+M =
+\begin{bmatrix}
+a & d & g\\
+b & e & h\\
+c & f & i
+\end{bmatrix}
+=
+\begin{bmatrix}
+a & b & c\\
+d & e & f\\
+g & h & i
+\end{bmatrix}
+\end{equation}
+
+Suele ser útil por una propiedad, la inversa de una matriz ortonormal (rotación pura) es igual que su transpuesta, lo cual es mucho más rápido y sencillo. Como con la inversión, la transpuesta de una secuencia de matrices concatenadas es la concatenación de las matrices transpuestas individuales.
+
+\begin{equation}
+(A \cdot B \cdot C)^{T} =  C^{T} \cdot B^{T} \cdot A^{T}
+\end{equation}
+
+## Coordenadas homogéneas
+
+Para poder realizar la traslación de un punto a través de una matriz de transformación esta última debe ser una matriz 4x4.
+
+\begin{equation}
+T =
+\begin{bmatrix}
+1 & 0 & 0 & t_x\\
+0 & 1 & 0 & t_y\\
+0 & 0 & 1 & t_z\\
+0 & 0 & 0 & 1
+\end{bmatrix}
+\end{equation}
+
+Eso supone un problema puesto que los puntos o vectores en 3D son matrices de 3x1. Para ello se extienden los puntos o vectores a 4 dimensiones, y se dice que están en coordenadas homogéneas. Para ello a los puntos se le añade un 1 como cuarta dimensión y un 0 a los vectores. Así ya se pueden aplicar las matrices de transformación 4x4 a puntos o vectores en coordenadas homogéneas 4x1. La mayor parte de las operaciones en programación gráfica tienen lugar bajo estos parámetros.
+
+\begin{equation}
+P =
+\begin{bmatrix}
+x\\
+y\\
+z\\
+1
+\end{bmatrix}
+\end{equation}
+
+\begin{equation}
+\vec{v} =
+\begin{bmatrix}
+x\\
+y\\
+z\\
+0
+\end{bmatrix}
+\end{equation}
+
+De esta manera al trasladar un punto $P^t = T \cdot P$ , ya que su coordenada homogénea es 1, el resultado es
+
+\begin{equation}
+P^t =
+\begin{bmatrix}
+x + t_x\\
+y + t_y\\
+z + t_z\\
+1
+\end{bmatrix}
+\end{equation}
+
+En este caso los puntos y vectores se tratan de manera distinta, cuando se transforma un punto con una matriz, la traslación, rotación y escala se aplican al punto, pero cuando se hace eso mismo con un vector, la traslación es ignorada (puesto que su coordenada homogénea es 0). Esto es así porque los vectores no tienen traslación por sí mismos. Un punto en coordenadas homogéneas 4D, puede ser convertido a coordenadas no homogéneas 3D, dividiendo x, y, z por su componente w.
+
+\begin{equation}
+\begin{bmatrix}
+x\\
+y\\
+z\\
+w
+\end{bmatrix}
+=
+\begin{bmatrix}
+x/w\\
+y/w\\
+z/w
+\end{bmatrix}
+\end{equation}
+
+## Matrices de transformación atómicas
+
+Una matriz de transformación afín puede ser creada a partir de la concatenación de una secuencia de matrices 4x4 que representan traslaciones puras, rotaciones puras, escalados puros y/o shears puros. Los shears no suelen usarse en gráficos, por tanto, se obvian.
+
+Cualquier matriz de transformación afín 4x4 puede ser fraccionada en 4 componentes:
+
+\begin{equation}
+M_a =
+\begin{bmatrix}
+U_{3x3} & t_{3x1}\\
+0_{1x3} & 1
+\end{bmatrix}
+\end{equation}
+
+La matriz $U_{3x3}$ representa la rotación y/o escalado, un vector traslación $t_{3x1}$, un vector 1x3 de ceros, y un escalar 1 en la esquina inferior derecha. Cuando un punto es multiplicado por una matriz queda así:
+
+\begin{equation}
+\begin{bmatrix}
+P^1_{3x1}\\
+1
+\end{bmatrix}
+=
+\begin{bmatrix}
+U_{3x3} & t_{3x1}\\
+0_{1x3} & 1
+\end{bmatrix}
+\cdot
+\begin{bmatrix}
+P_{3x1}\\
+1
+\end{bmatrix}
+=
+\begin{bmatrix}
+U \cdot P + t\\
+1
+\end{bmatrix}
+\end{equation}
+
+### Traslación
+
+Una matriz de traslación tiene la siguiente forma y traslada un punto por el vector $\vec{t}$.
+
+\begin{equation}
+T =
+\begin{bmatrix}
+1 & 0 & 0 & t_x\\
+0 & 1 & 0 & t_y\\
+0 & 0 & 1 & t_z\\
+0 & 0 & 0 & 1
+\end{bmatrix}
+\end{equation}
+
+\begin{equation}
+P + \vec{t} = T \cdot
+\begin{bmatrix}
+P_x\\
+P_y\\
+P_z\\
+1
+\end{bmatrix}
+=
+\begin{bmatrix}
+P_x + t_x\\
+P_y + t_y\\
+P_z + t_z\\
+1
+\end{bmatrix}
+\end{equation}
+
+O en la forma fraccionada:
+
+\begin{equation}
+\begin{bmatrix}
+I_{3x3} & t_{3x1}\\
+0_{1x3} & 1
+\end{bmatrix}
+\cdot
+\begin{bmatrix}
+P_{3x1}\\
+1
+\end{bmatrix}
+=
+\begin{bmatrix}
+P + t\\
+1
+\end{bmatrix}
+\end{equation}
+
+### Rotación
+
+Todas las matrices de rotación 4x4 puras tienen la siguiente forma:
+
+\begin{equation}
+R_{4x4} =
+\begin{bmatrix}
+R_{3x3} & 0_{3x1}\\
+0_{1x3} & 1
+\end{bmatrix}
+\end{equation}
+
+El vector traslación $\vec{t}$ es 0, y la matriz superior $R_{3x3}$ contiene senos y cosenos del ángulo de rotación medido en radianes.
+
+Las tres matrices de rotación respecto de los 3 ejes son:
+
+- Respecto del eje X
+
+\begin{equation}
+R_x =
+\begin{bmatrix}
+1 & 0 & 0 & 0\\
+0 & cosθ & -sinθ & 0\\
+0 & sinθ & cosθ & 0\\
+0 & 0 & 0 & 1
+\end{bmatrix}
+\end{equation}
+
+- Respecto del eje Y
+
+\begin{equation}
+R_y =
+\begin{bmatrix}
+cosθ & 0 & sinθ & 0\\
+0 & 1 & 0 & 0\\
+-sinθ & 0 & cosθ & 0\\
+0 & 0 & 0 & 1
+\end{bmatrix}
+\end{equation}
+
+- Respecto del eje Z
+
+\begin{equation}
+R_z =
+\begin{bmatrix}
+cosθ & -sinθ & 0 & 0\\
+sinθ & cosθ & 0 & 0\\
+0 & 0 & 1 & 0\\
+0 & 0 & 0 & 1
+\end{bmatrix}
+\end{equation}
+
+Se aplica de la siguiente manera:
+
+\begin{equation}
+\begin{bmatrix}
+R_{3x3} & 0_{3x1}\\
+0_{1x3} & 1
+\end{bmatrix}
+\cdot
+\begin{bmatrix}
+P_{3x1}\\
+1
+\end{bmatrix}
+=
+\begin{bmatrix}
+R \cdot P\\
+1
+\end{bmatrix}
+\end{equation}
+
+Para invertir una matriz de rotación pura solo hay que transponerla.
+
+Las rotaciones positivas van de x a y (sobre z), de y a z (sobre x) y de z a x (sobre y).
+
+### Escalado
+
+Las matrices de escalado 4x4 tienen la siguiente forma:
+
+\begin{equation}
+S_{4x4} =
+\begin{bmatrix}
+S_{3x3} & 0_{3x1}\\
+0_{1x3} & 1
+\end{bmatrix}
+\end{equation}
+
+La matriz superior $S_{3x3}$ tiene los escalados en cada eje en la diagonal de la siguiente manera:
+
+\begin{equation}
+S =
+\begin{bmatrix}
+s_x & 0 & 0 & 0\\
+0 & s_y & 0 & 0\\
+0 & 0 & s_z & 0\\
+0 & 0 & 0 & 1
+\end{bmatrix}
+\end{equation}
+
+Y se aplica:
+
+\begin{equation}
+\begin{bmatrix}
+S_{3x3} & 0_{3x1}\\
+0_{1x3} & 1
+\end{bmatrix}
+\cdot
+\begin{bmatrix}
+P_{3x1}\\
+1
+\end{bmatrix}
+=
+\begin{bmatrix}
+S \cdot P\\
+1
+\end{bmatrix}
+\end{equation}
+
+Para invertir una matriz de escalado pura se sustituyen los componentes $s_x, s_y, s_z$ por sus inversos $1/s_x, 1/s_y, 1/s_z$.
+
+Cuando el factor de escala sobre los tres ejes es el mismo $s_x = s_y = s_z$, entonces se le llama un escalado uniforme.
+
+Cuando una matriz de escalado uniforme y una matriz de rotación se concatenan, el orden de la multiplicación no es relevante, esto solo funciona para escalados uniformes.
+
+\begin{equation}
+S_u \cdot R = r \cdot S_u
+\end{equation}
+
+<link rel="stylesheet" href="res/md/viu.css">
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'long'};</script>
+<!-- Markdeep: --><script src="res/md/markdeep.min.js?" charset="utf-8"></script>

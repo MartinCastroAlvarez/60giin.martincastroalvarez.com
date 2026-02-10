@@ -1,0 +1,136 @@
+<meta charset="utf-8">
+**60GIIN - 003 - Sistemas de Coordenadas**
+    <small>©2026 VIU - 60GIIN Programación Gráfica - Iván Fuertes</small>
+
+# Introducción
+
+Aplicar transformaciones a puntos usando matrices de 4x4 se puede extender a objetos rígidos si se piensa que estos no son más que una colección de puntos. Aplicar una transformación a un objeto no es más que aplicarlo a todos los puntos que lo componen. En gráficos, un objeto se suele representar por una malla de triángulos, cada uno con tres vértices representados por puntos.
+
+*OpenGL* espera que todos los puntos que tengan que ser visibles estén en coordenadas normalizadas, esto es, las coordenadas de cada vértice estén entre -1.0 y 1.0. Las coordenadas fuera de ese rango no serán visibles.
+
+# Espacios
+
+Transformar las coordenadas de los vértices a las coordenadas normalizadas se suele realizar paso a paso, donde se transforma cada vértice a varios sistemas de coordenadas hasta llegar a las coordenadas de pantalla. Hay cinco espacios de especial relevancia, espacio local, espacio mundo, espacio vista, espacio clip y espacio pantalla.
+
+![Figure [res/003_001]: Los cincos espacios en *OpenGL*](res/003_001.png)
+
+Para transformar las coordenadas de un espacio al siguiente se usan matrices de transformación llamadas *Model*, *View* y *Projection*.
+
+Las coordenadas en el espacio local son relativas a su origen local, son las coordenadas donde el objeto empieza.
+
+A continuación, se transforman a coordenadas de mundo, que son coordenadas respecto al mundo donde se colocan los objetos. Estas coordenadas son relativas al origen global del mundo virtual, junto con otros objetos colocados en el mundo. Para pasar a este sistema se multiplican los objetos por la matriz *Model*.
+
+Después se transforman las coordenadas de mundo a coordenadas de cámara, de tal manera que cada coordenada queda tal como seria vista por una cámara virtual situada en el mundo. Para eso se multiplican los vértices en espacio de mundo por la matriz *View*.
+
+Una vez en espacio de vista tienen que pasar a espacio de clip o coordenadas normalizadas, tienen que estar entre -1.0 y 1.0, y se determinan que vértices acaban en la pantalla. Para ello se multiplican las coordenadas en espacio de cámara por la matriz de *Projection*.
+
+Por último, se transforman las coordenadas en espacio de clip al espacio de pantalla, que convierte el rango -1.0, 1.0 a un rango definido por el view port (tamaño de pantalla). Las coordenadas resultantes entonces se mandan al rasterizador que las convierte en fragmentos para pintarlos en pantalla.
+
+La ventaja de hacerlo de esta manera es que ciertas operaciones son más sencillas de realizar en algún sistema en particular, por ejemplo, si se quisiera modificar la geometría de un modelo en particular, resultaría más lógico realizarlo en espacio local del modelo, pero si se quisiera mover el modelo dentro del mundo, resultaría más lógico hacerlo en espacio de mundo.
+
+![Figure [res/003_002]: Pipeline de transformación de espacios](res/003_002.png  width="400px")
+
+## Espacio local
+
+Es el espacio de coordenadas que es local al objeto. Cuando se crea un objeto en un software de modelado o creación de contenido (*Blender*, *3DSMax*, *Maya+...) se le asigna un punto de origen (0, 0, 0) desde donde se posicionan todas las coordenadas de sus vértices. Todos los modelos tienen un (0, 0, 0) como su posición inicial, y por lo tanto todos los vértices están en espacio local, son todos locales al objeto.
+
+## Espacio de mundo
+
+Si los objetos se importaran directamente acabarían todos apilados alrededor del origen del mundo en (0, 0, 0). Pero lo deseado es definir una posición para cada objeto y así situarlo dentro del mundo virtual que es más grande. Las coordenadas de mundo son exactamente eso, las coordenadas de todos los vértices relativas al mundo virtual. Es el sistema en el cual se quieren los objetos transformados de tal manera que creen un espacio realista. Las coordenadas del objeto se transforman del espacio local al espacio de mundo a través de la matriz *Model*.
+
+La matriz *Model* es una matriz de transformación que traslada, escala y/o rota los objetos para situarlos en el mundo en su localización.
+
+## Espacio de vista
+
+Este espacio es comúnmente conocido como la cámara (espacio de cámara o espacio de ojo). Es el resultado de transformar las coordenadas de mundo que están en frente de la vista del usuario. Así pues, este espacio deja el mundo tal como se ve desde el punto de vista de la cámara virtual. Suele hacerse combinando una serie de traslaciones y rotaciones para que los objetos se transformen en frente de la cámara. Esas transformaciones combinadas se guardan en la matriz *View*, que transforma desde el espacio de mundo al espacio de vista.
+
+## Espacio de clip
+
+Al final del todo, *OpenGL* espera que las coordenadas estén dentro de un rango específico (-1.0, 1.0) en las tres dimensiones, y las que caen fuera son recortadas, y son descartadas, por lo que las que quedan dentro se convierten en fragmentos visibles en la pantalla.  Para eso se hace uso de la matriz de *Projection*.
+
+![Figure [res/003_003]: Espacio de clip, cubo normalizado](res/003_003.png)
+
+Si una parte de un triángulo queda fuera del espacio de clip, *OpenGL* reconstruirá el triángulo como uno o más triángulos que entren dentro del espacio de clip.
+
+La caja de visualización que una matriz de proyección crea se llama frustum y cada coordenada que acaba dentro acaba siendo pintada en la pantalla.
+
+Una vez todos los vértices han sido transformados a espacio de clip, se realiza una operación final llamada división de perspectiva, donde se dividen las coordenadas x, y, z por la componente homogénea w, para transformar del espacio de clip 4D a las coordenadas normalizadas en 3D. Este paso se suele realizar de manera automática.
+
+## Espacio de pantalla
+
+Una vez las coordenadas están en espacio de clip, son mapeadas a las coordenadas 2D de la pantalla usando los parámetros del *viewPort* y convertidas en fragmentos. Este paso es realizado automáticamente por *OpenGL*, puesto que ya sabe las dimensiones finales del *viewPort *de la ventana o textura donde se va a pintar finalmente.
+
+![Figure [res/003_004]: Espacio de pantalla, normalizado](res/003_004.png)
+
+# Proyecciones
+
+La matriz de proyección usada para convertir de espacio de vista a espacio de clip puede tener dos formas diferentes, cada una define un frustum único, se habla de la matriz de proyección ortográfica y la matriz de proyección perspectiva.
+
+![Figure [res/003_005]: Frustum en una proyección perspectiva y ortográfica](res/003_005.png)
+
+## Proyección ortográfica
+
+Una matriz de proyección ortográfica define un frustum en forma de cubo que define el espacio de clip. Cuando se crea, se especifica el ancho, alto y longitud del frustum visible, definiendo dos planos, el *near* (cercano) y el *far* (lejano). Todas las coordenadas que acaban dentro del frustum tras ser transformadas al espacio de clip con la matriz de proyección ortográfica se visualizarán. El frustum es como un contenedor de vértices. El frustum ortográfico directamente mapea todas las coordenadas que contiene a las coordenadas normalizadas, puesto que no toca la componente homogénea de cada vértice.
+
+Cuando se usa una proyección ortográfica, cada vértice es mapeado directamente al espacio de clip sin ningún tipo de división de perspectiva, al plano 2D que es la pantalla, por lo cual, los objetos más alejados no aparecen más pequeños como en la proyección perspectiva. Crea resultados poco realistas para escenas 3D porque no toma en cuenta la perspectiva, con lo cual suele usarse solo para hacer pintados en 2D.
+
+Así se construye de una matriz de proyección ortográfica:
+
+\begin{equation}
+P_O =
+\begin{bmatrix}
+\frac{2}{right - left} & 0 & 0 & \frac{-(right + left)}{right - left}\\
+0 & \frac{2}{top - bottom} & 0 & \frac{-(top + bottom)}{top - bottom}\\
+0 & 0 & \frac{-2}{far - near} & \frac{-(far + near)}{far - near}\\
+0 & 0 & 0 & 1
+\end{bmatrix}
+\end{equation}
+
+## Proyección perspectiva
+
+En un modelo más realista los objetos más lejanos suelen parecer más pequeños, este efecto se suele llamar perspectiva. Y es el que intenta imitar la matriz de proyección perspectiva. Esta mapea un frustum al espacio de clip, y además manipula el valor w de cada vértice de tal manera que cuanto más lejos se encuentre un vértice de la cámara más grande es su componente w. Una vez las coordenadas son transformadas al espacio de clip están en el rango de -w a w. *OpenGL* requiere que las coordenadas visibles estén en el rango -1.0 a 1.0, con lo cual, una vez en coordenadas de clip, se aplica la división de perspectiva a dichas coordenadas.
+
+\begin{equation}
+P =
+\begin{bmatrix}
+x/w\\
+y/w\\
+z/w
+\end{bmatrix}
+\end{equation}
+
+El frustum que define una matriz de proyección perspectiva se puede visualizar como una caja no uniforme donde cada coordenada dentro de ella es mapeada. Esta matriz se suele definir a través del *FOV* (Field of View) o campo de visión, que es el ángulo que determina como de grande es el espacio de visión, suele usarse un *FOV* de 45º. El *aspect ratio*, es la división del ancho y alto del *viewport* de la pantalla.
+
+![Figure [res/003_006]: Frustum en una proyección perspectiva](res/003_006.png)
+
+Construcción de una matriz de proyección perspectiva:
+
+\begin{equation}
+P_P =
+\begin{bmatrix}
+\frac{1}{aspectratio \cdot tan(\frac{fov}{2})} & 0 & 0 & 0\\
+0 & \frac{1}{tan(\frac{fov}{2})} & 0 & 0\\
+0 & 0 & \frac{-(far + near)}{far - near} & \frac{-(2 \cdot far \cdot near)}{far - near}\\
+0 & 0 & -1 & 0
+\end{bmatrix}
+\end{equation}
+
+Por norma general, se suelen usar proyecciones ortográficas cuando se va a trabajar con escenas en 2D o isométricas, y con proyecciones en perspectivas para escenas 3D más realistas.
+
+![Figure [res/003_007]: Proyección ortográfica vs perspectiva](res/003_007.png)
+
+Para más información acerca de la construcción de ambas matrices de proyección se puede consultar el siguiente [enlace](http://www.songho.ca/opengl/gl_projectionmatrix.html).
+
+# MVP
+
+Se crea una matriz de transformación para cada uno de los cambios de espacio mencionados, *model*, *view* y *projection*. Un vértice entonces es transformado a espacio de clip multiplicando por cada matriz en el orden correcto, primero pasa a espacio de mundo, luego a espacio de vista y por último a espacio de clip.
+
+\begin{equation}
+P^1 = M_p \cdot M_v \cdot M_m \cdot P
+\end{equation}
+
+Por último, *OpenGL* realiza la división de la perspectiva para transformar las coordenadas en espacio de clip al espacio normalizado, y entonces usando el *viewport* lo mapea a las coordenadas de pantalla, donde cada coordenada corresponde a un punto en la pantalla final.
+
+<link rel="stylesheet" href="res/md/viu.css">
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'long'};</script>
+<!-- Markdeep: --><script src="res/md/markdeep.min.js?" charset="utf-8"></script>
