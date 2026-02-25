@@ -1,0 +1,446 @@
+<meta charset="utf-8">
+**60GIIN - 007 - Pipeline Gráfico**
+    <small>©2026 VIU - 60GIIN Programación Gráfica - Iván Fuertes</small>
+
+# Introducción
+
+En *OpenGL* todo está en espacio 3D, pero la pantalla y la ventana son matrices de píxeles 2D, así que gran parte del trabajo de *OpenGL* es transformar todas las coordenadas 3D a píxeles 2D que se ajustan a la pantalla. El proceso de transformar coordenadas 3D a coordenadas 2D se gestiona por el pipeline gráfico de *OpenGL*. Se puede dividir en dos grandes secciones, la primera transforma las coordenadas 3D en coordenadas 2D y la segunda transforma las coordenadas 2D en píxeles coloreados.
+
+Hay una diferencia entre una coordenada 2D y un píxel, una coordenada 2D es una representación precisa de donde está un punto en espacio 2D, mientras que un píxel es una aproximación de ese punto limitada por la resolución de la pantalla o ventana final.
+
+# Etapas y shaders
+
+El pipeline gráfico toma como entrada las coordenadas 3D y las transforma en píxeles 2D coloreados en la pantalla. Se puede separar en varios pasos, y cada paso requiere de la salida del anterior paso como entrada. Todos esos pasos están altamente especializados, solo tienen una función, y pueden ser fácilmente paralelizables. Por eso la mayoría de las tarjetas gráficas actuales tienen miles de pequeños núcleos de procesamiento para procesar rápidamente los datos dentro del pipeline gráfico ejecutando pequeños programas en la GPU para cada paso del pipeline. A estos pequeños programas se les llama shaders.
+
+Algunos de estos shaders son configurables por el programador, lo cual permite escribir shaders propios que reemplazan a los shaders standard. Esto da un control mucho más fino sobre partes específicas del pipeline y puesto que se ejecutan en la GPU, ahorran tiempo de CPU. Los shaders se escriben en *GLSL* (*OpenGL Shading Language*), que es un lenguaje muy cercano a C.
+
+![Figure [res/007_001]: Pipeline gráfico simplificado](res/007_001.png)
+
+En esta visión del pipeline gráfico se pueden observar las secciones más importantes y entre ellas las tres que son programables a través de los shaders.
+
+Como entrada al pipeline se le pasan una lista de 3 coordenadas en espacio 3D que deberán formar un triángulo en una formación que son los datos de vértice, que no son más que una colección de vértices, y un vértice no es más que una colección de datos para una coordenada 3D. Estos datos de los vértices se representan usando unos atributos de vértice, que pueden contener cualquier dato, pero por simplicidad ahora se asume que cada vértice consiste en su posición en 3D.
+
+Para que *OpenGL* sepa qué hacer con esa colección de coordenadas y colores, se requiere que se le informe de qué tipo de pintado tiene que hacer con ellos. ¿Se tienen que pintar como una colección de puntos, una colección de triángulos o una línea? A eso se le llaman primitivas, y se le pasa a *OpenGL* mientras se llama a algún comando de pintado. Algunas de esas primitivas son `GL_POINTS`, `GL_TRIANGLES` y `GL_LINE_STRIP`.
+
+La primera parte del pipeline es el shader de vértice, que toma como entrada un solo vértice. El propósito principal del shader de vértice es transformar las coordenadas 3D del vértice (suelen venir en coordenadas locales) en los diferentes espacios necesarios (mundo, vista, clip,...) y permite hacer algún procesado muy básico en los atributos del vértice.
+
+La sección del ensamblado de primitivas toma como entrada todos los vértices del shader de vértices que forman una primitiva y ensambla todos los puntos en la primitiva deseada (normalmente un triángulo).
+
+La salida del ensamblado de primitivas se le pasa al shader de geometría. Esta sección toma como entrada una colección de vértices que forman una primitiva y tiene la habilidad de generar otras formas emitiendo nuevos vértices para formar nuevas primitivas.
+
+La salida del shader de geometría se le pasa a la sección de rasterización, que mapea las primitivas resultantes a los correspondientes píxeles en la pantalla final, resultando en fragmentos que el shader de fragmentos usa. Antes de ejecutarse el shader de fragmentos se realiza el clipping (descartar los píxeles que caen fuera del espacio de clip, mejorando el rendimiento). Un fragmento es todo lo que necesita *OpenGL* para pintar un solo píxel.
+
+El trabajo principal del shader de fragmentos es calcular el color final de un píxel, y es normalmente donde todos los efectos avanzados de *OpenGL* suceden. Normalmente el shader de fragmentos contiene datos sobre la escena 3D que puede usar para calcular el color final del píxel (luces, sombras, color de la luz,...).
+
+Después que todos los valores de color para cada fragmento hayan sido calculados, el objeto final pasa una sección más que se llama test de alpha y blending. Aquí se verifica la profundidad correspondiente (y el stencil) del fragmento y usa ese valor para comprobar si el fragmento resultante está enfrente o detrás de otros objetos y debería ser descartado. También comprueba los valores de alpha (transparencia) y mezcla los objetos debidamente. Así que, aunque el color de un fragmento haya sido calculado en el shader de fragmentos, finalmente puede acabar siendo algo totalmente diferente en el píxel en pantalla.
+
+El pipeline es un sistema bastante complejo y tiene muchas partes configurables, pero casi siempre los casos de uso se limitan a trabajar con los shaders de vértices y fragmentos. El shader de geometría es opcional y se suele dejar el standard. En *OpenGL* moderno se requiere definir al menos un shader de vértices y uno de fragmentos propio (no hay uno por defecto en la GPU).
+
+# Vértices
+
+Para empezar a pintar algo primero hay que darle a *OpenGL* algunos datos de vértices, y se le deben especificar en 3D, con 3 coordenadas. Para empezar a pintar un simple triángulo, hay que especificar un total de 3 vértices, con cada vértice teniendo una posición 3D. Se definen en el espacio normalizado (entre -1.0 y 1.0) que es la parte visible en *OpenGL* en un array de floats.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+float vertices[] = { -0.5f, -0.5f, 0.0f,
+                     0.5f, -0.5f, 0.0f,
+                     0.0f, 0.5f, 0.0f};
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [vertices_tri]: Tres vértices que definen un triángulo en el espacio normalizado]
+
+La coordenada en `z` es 0.0 para que el triángulo que se va a pintar aparezca en 2D. Como se mencionaba en apartados anteriores, los vértices una vez procesados en el shader de vértices deberían quedar en el espacio normalizado entre -1.0 y 1.0 en los tres ejes. En este ejemplo el shader de vértices no va a hacer ninguna transformación, así que le pasamos directamente las coordenadas ya en el espacio normalizado.
+
+![Figure [res/007_002]: Triángulo en espacio normalizado 2D (extenderlo a 3D es simplemente añadirle una dimensión)](res/007_002.png)
+
+En el espacio normalizado de *OpenGL* el origen de coordenadas (0,0) está en el centro, las `x` crecen hacia la derecha y las `y` crecen hacia arriba (las `z` suelen crecer hacia dentro de la pantalla, esto es solo así en el espacio normalizado). Estas coordenadas serán transformadas a espacio de pantalla por *OpenGL* con la transformación del viewport como se ha visto anteriormente y convertidas a fragmentos como entrada para el shader de fragmentos.
+
+Una vez definidas las coordenadas de los vértices hay que hacérselas llegar a la primera fase del pipeline, el shader de vértices. Esto se realiza creando un espacio en la memoria de la GPU donde almacenar los datos de los vértices, configurar como *OpenGL* debería interpretar esa memoria y especificar como mandar esos datos a la tarjeta gráfica. Entonces el shader de vértices procesa tantos vértices como se le diga desde esta memoria.
+
+Se gestiona esta memoria a través de los objetos buffer de vértices (*VBO Vertex Buffer Objects*), que pueden almacenar un gran número de vértices en la memoria de la GPU. La ventaja de usar estos objetos es que se pueden mandar grandes cantidades de datos de una vez y no tener que mandar los vértices uno a uno. Subir datos a la memoria de la GPU es un proceso lento, con lo cual realizar estos procesos de una manera óptima siempre es importante. Una vez los datos están en la memoria de la GPU el shader de vértices tiene acceso a ellos casi de manera instantánea.
+
+Un objeto buffer de vértices (como se ha visto en la parte de objetos de *OpenGL*), tiene un `id` único que lo referencia.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+uint32_t VBO;
+glGenBuffers(1, &VBO);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [gen_vbo]: Generar un *VBO*]
+
+Con una llamada a `glGenBuffers` se genera un *VBO* y se obtiene su `id`. *OpenGL* tiene muchos tipos distintos de objetos buffer, y el tipo de un objeto buffer de vértices es `GL_ARRAY_BUFFER`. *OpenGL* permite enlazar varios buffers a la vez siempre que tengan diferentes tipos. Se puede enlazar el nuevo buffer al tipo `GL_ARRAY_BUFFER` con la llamada a `glBindBuffer`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glBindBuffer(GL_ARRAY_BUFFER, VBO);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [bind_vbo]: Enlazar un *VBO* al target `GL_ARRAY_BUFFER`]
+
+Desde ahora cualquier llamada que se realice a cualquier buffer (en el destino `GL_ARRAY_BUFFER`) se usaría para configurar el buffer actualmente enlazado, el cual es el *VBO* creado. Entonces llamando a `glBufferData` se suben los datos de los vértices de la CPU a la GPU, a la memoria del buffer.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [send_data_vbo]: Enviar datos desde la CPU al *VBO* en la GPU]
+
+Esta es una función especialmente diseñada para copiar datos definidos por el usuario al buffer que esté enlazado en ese momento. Su primer argumento es el tipo de buffer al cual se quiere copiar los datos, el objeto buffer que esté enlazado en ese momento al destino `GL_ARRAY_BUFFER`. El segundo argumento especifica el tamaño de los datos en bytes que se quieren subir al buffer, un `sizeof` suele ser suficiente. El tercer parámetro es un puntero a los datos que se quieren subir. El cuarto parámetro especifica cómo se quiere que la tarjeta gráfica gestione los datos. Puede tener tres formas:
+
+- `GL_STATIC_DRAW`, los datos no cambiarán o lo harán de manera extraordinaria
+- `GL_DYNAMIC_DRAW`, los datos cambiarán a menudo
+- `GL_STREAM_DRAW`, los datos cambiarán cada vez que se pinten
+
+Las posiciones del triángulo que se quiere pintar no van a cambiar y van a ser las mismas para cada llamada al pintado, así que el tipo debe ser `GL_STATIC_DRAW`. Si se quisiera usar un buffer con datos que variaran frecuentemente se debe hacer uso de las otras dos formas, así la GPU situará esos datos en una memoria que permita escrituras más rápidas.
+
+# Shader de vértices
+
+Ahora que los datos de los vértices están en un buffer en la GPU es el momento de crear los shaders que los procesen y acaben pintándose.
+
+El primer paso es escribir el shader en el lenguaje *GLSL* y compilarlo para poder usarlo.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+layout (location=0) in vec3 aPos;
+void main() {
+  gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [vertex_shader]: Shader de vértices]
+
+Éste es un shader de vértices muy simple. El lenguaje *GLSL* es muy parecido a C. Cada shader empieza con una declaración de su versión, a partir de *OpenGL 3.3* las versiones de *GLSL* corresponden con las versiones de *OpenGL* (*GLSL 330* corresponde con *OpenGL 3.3*). También se declara explícitamente el uso del perfil core.
+
+A continuación, se declaran todos los atributos de vértice con la clave `in`. Ahora solo hay que preocuparse de los datos de posición, así que solo se necesita un atributo. *GLSL* tiene un tipo de datos vector que puede contener de 1 a 4 floats (`vec3` corresponde a 3 floats). Puesto que cada vértice tiene una coordenada 3D se crea una variable de entrada `vec3` con el nombre `aPos`. También se especifica la localización de la variable de entrada a través del `layout (location=0)`.
+
+En programación gráfica se usa muy a menudo el concepto matemático de vector, ya que representa igualmente posiciones o direcciones en cualquier espacio y tiene propiedades matemáticas muy útiles. Un vector en *GLSL* puede tener un máximo tamaño de 4 componentes y cada una de ellas se puede extraer a través de `vec.x`, `vec.y`, `vec.z` y `vec.w` respectivamente.
+
+Para determinar la salida de un shader de vértices hay que asignarle un valor a la variable predefinida `gl_Position`, que es un `vec4`. Al final de la función `main` del shader, el valor que tenga `gl_Position` es lo que se quedará como salida del shader de vértices y será consumida por la siguiente etapa del pipeline. Puesto que la entrada es un vector de 3 componentes y la salida debe ser un vector de 4, se crea un `vec4`, donde las tres primeras componentes son los valores de `vec3` y el cuarto valor (componente homogénea) se pone a 1, puesto que representa a un punto.
+
+Por norma general, los datos de entrada en un shader de vértices no están ya directamente en espacio normalizado, así que el principal trabajo de este shader suele ser transformar las coordenadas a espacio normalizado. Este shader de prueba simplemente las reenvía a la siguiente etapa (en el ejemplo ya se han subido normalizadas).
+
+# Compilar el shader
+
+Una vez escrito el shader, se almacena en una cadena de caracteres de C. Prestando atención a los saltos de línea `\n` y fin de cadena `\0`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+const char* vertexShaderSource = "#version 330 core\n"
+  "layout (location=0) in vec3 aPos;\n"
+  "void main() {\n"
+  "  gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);\n"
+  "}\0";
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [vertex_shader_c]: Shader de vértices en C++]
+
+Para que *OpenGL* pueda usar este shader hay que compilarlo dinámicamente en tiempo de ejecución a partir de su código fuente.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+const uint32_t vertexShader = glCreateShader(GL_VERTEX_SHADER);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [gen_vertex_shader]: Generar un shader de vértices]
+
+Lo primero es crear un objeto shader, referenciado por su `id`, llamando a la función `glCreateShader` y diciéndole el tipo de shader como argumento, en este caso `GL_VERTEX_SHADER`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glShaderSource(vertexShader, 1, &vertexShaderSource, nullptr);
+glCompileShader(vertexShader);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [compile_vertex_shader]: Subir código fuente y compilar un shader de vértices]
+
+A continuación, se adjunta el código fuente del shader y se compila. La función `glShaderSource` como primer parámetro toma el `id` del objeto a compilar, como segundo argumento cuantas cadenas de caracteres estamos pasando como fuente, el tercer parámetro es la cadena de caracteres con el código fuente del shader y el último parámetro son las longitudes de las cadenas de texto, se deja a `nullptr`. Y por último con `glCompileShader` se compila.
+
+Habitualmente se suele verificar si la compilación tuvo éxito, para poder ver cualquier error que se haya cometido y arreglarlo.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+int success;
+char infoLog[512];
+glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
+if (!success) {
+  glGetShaderInfoLog(vertexShader, 512, nullptr, infoLog);
+  std::cout << "Error Compiling Shader " << std::endl << infoLog << std::endl;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [check_vertex_shader]: Verificar la compilación de un shader de vértices]
+
+Se define un entero para recoger si ha tenido éxito o no, y un contenedor para recoger el mensaje de error (si existe). Se verifica el estado de la compilación con `glGetShaderiv`, con el parámetro `GL_COMPILE_STATUS`, y si ha fallado se obtiene el texto del error a través de `glGetShaderInfoLog` y se imprime el mismo por consola.
+
+# Shader de fragmentos
+
+El shader de fragmentos es la segunda etapa que se va a crear para pintar el triángulo. Aquí todo discurre alrededor de calcular el color final de los píxeles. En esta demo como salida se selecciona un color fijo por simplicidad.
+
+Los colores en programación gráfica se suelen representar como un conjunto de 4 valores (*RGBA*, *Red*, *Green*, *Blue*, *Alpha*). Cuando se define un color en *OpenGL* o *GLSL* se determina la fuerza de cada componente en valores entre 0.0 y 1.0. Combinando todas las opciones se pueden generar 16 millones de colores distintos.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+out vec4 FragColor;
+void main() {
+  FragColor = vec4(0.7, 0.2, 0.2, 1.0);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [fragment_shader]: Shader de fragmentos]
+
+Este es el código fuente del shader de fragmentos. Solo necesita una variable de salida, y es un vector de 4 componentes que define el color final que siempre se debe calcular aquí. Se pueden declarar variables de salida con la palabra clave `out`, que aquí se ha llamado `FragColor`. Se le asigna un valor fijo a este `vec4`, para construir un color solido de tono rojo (rojo = 0.7, verde = 0.2, azul = 0.2, transparencia = 1.0).
+
+El proceso de compilar un shader de fragmentos es similar al de vértices. La única diferencia está en usar `GL_FRAGMENT_SHADER` como el tipo del shader.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+const char* fragmentShaderSource = "#version 330 core\n"
+  "out vec4 FragColor;\n"
+  "void main() {\n"
+  "  FragColor = vec4(0.7, 0.2, 0.2, 1.0);\n"
+  "}\0";
+
+const uint32_t fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+glShaderSource(fragmentShader, 1, &fragmentShaderSource, nullptr);
+glCompileShader(fragmentShader);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [gen_fragment_shader]: Generar y compilar un shader de fragmentos]
+
+# Program
+
+Un objeto de programa es la versión link final de varios shaders combinados. Para usar los shaders que se han compilado hay que linkarlos en un programa y activarlo para empezar a pintar objetos. Los shaders del programa que este activado serán los que se usen para las llamadas a pintado.
+
+Cuando se linkan los shaders de un programa es cuando se enlazan las salidas de cada shader con las entradas del siguiente shader, y es aquí cuando saldrán errores si no coinciden.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+const uint32_t program = glCreateProgram();
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [gen_program]: Generar un programa]
+
+Crear un programa es una llamada a `glCreateProgram` que devuelve su `id`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glAttachShader(program, vertexShader);
+glAttachShader(program, fragmentShader);
+glLinkProgram(program);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [link_program]: Adjuntar shaders al programa y linkarlos]
+
+A continuación, se adjuntan los shaders requeridos al program y se linkan con `glLinkProgram`. Tal como sucedía al compilar shaders, se suele verificar que el proceso de linkado ha resultado exitoso.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+int success;
+char infoLog[512];
+glGetProgramiv(program, GL_LINK_STATUS, &success);
+if (!success) {
+  glGetProgramInfoLog(program, 512, nullptr, infoLog);
+  std::cout << "Error Compiling Program " << std::endl << infoLog << std::endl;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [check_program]: Verificar que el programa se ha linkado correctamente]
+
+El proceso es muy parecido al de los shaders, se usa `glGetProgramiv` con el parámetro `GL_LINK_STATUS`, y `glGetProgramInfoLog`.
+
+Una vez los shaders han sido linkados en el programa se deben eliminar, no se necesitan más.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glDeleteShader(vertexShader);
+glDeleteShader(fragmentShader);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [delete_shaders]: Eliminar shaders]
+
+El resultado de todo esto es un objeto de programa que se puede activar llamando a `glUseProgram`. Cada llamada de pintado tras un `glUseProgram` usará ese objeto de programa y por tanto los shaders que lo forman.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glUseProgram(program);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [usar_program]: Usar un programa]
+
+# Atributos de vértice
+
+El shader de vértices permite especificar cualquier entrada que se necesite como atributos, mientras que esto permite gran flexibilidad, significa que hay que especificar manualmente que parte de los datos de entrada van a cada atributo de vértice en el shader de vértices. Con lo cual hay que decirle a *OpenGL* como interpretar los datos de vértice antes de pintar.
+
+Los datos del buffer de vértices están formateados de esta manera:
+
+![Figure [res/007_003]: Formato del buffer de vértices](res/007_003.png)
+
+Los datos de posición están almacenados como 32bit (4 bytes) con valores en coma flotante. Cada posición está compuesta de 3 de estos valores. No hay espacio (otros valores) entre cada set de 3 valores. Los valores están empaquetados en el array. El primer valor en los datos está al inicio del buffer.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), static_cast<void*>(nullptr));
+glEnableVertexAttribArray(0);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [attrib_pointer]: Atributos de vértice con solo la posición]
+
+Con esto se le puede decir a *OpenGL* como debe interpretar los datos de vértice (por atributo de vértice) usando `glVertexAttribPointer`. El primer parámetro especifica qué atributo de vértice se quiere configurar, esa posición se especificó en el shader de vértices con `layout (location = 0)`, esto determina la localización del atributo de vértice a 0, y como se quiere pasar datos a este atributo de vértice, se hace en 0, la primera localización. El siguiente argumento especifica el tamaño del atributo de vértice, es un `vec3` (con 3 componentes), así que es un 3. El tercer argumento especifica el tipo de dato, que es un `GL_FLOAT`, un vector en *GLSL* está compuesto por floats. El siguiente argumento especifica si los datos van a estar normalizados, si se pone a `GL_TRUE` entonces todos los datos que no tengan un valor entre 0 y 1 (para `unsigned`) o entre -1 y 1 (para `signed`) estarán mapeados a estos límites, por ahora, se queda en `GL_FALSE`. El quinto argumento es el stride, e indica el espacio entre dos conjuntos de atributos de vértice, en este caso, puesto que el siguiente conjunto de datos (siguiente vértice) está localizado exactamente a la distancia de 3 componentes, esto es el tamaño de un float multiplicado por 3, es lo que se le indica. En este caso, puesto que los datos están empaquetados, y no hay espacio entre un atributo de vértice y el siguiente, se podría dejar este parámetro a 0, y *OpenGL* hubiera determinado el stride automáticamente, pero cuando se tienen más atributos de vértice hay que ser muy cuidadoso al determinar el espacio entre ellos. El último parámetro, es de tipo `void*`, e indica el offset desde donde empiezan los datos en el buffer de datos, puesto que los datos de posición empiezan al inicio del array, el valor es 0.
+
+Cada atributo de vértice coge sus datos de la memoria gestionada por un *VBO* (*Vertex Buffer Object*), y viene determinado por el *VBO* que este actualmente enlazado a `GL_ARRAY_BUFFER` cuando se llama a `glVertexAttribPointer`, como el *VBO* que se ha definido anteriormente fue enlazado antes de llamar a `glVertexAttribPointer` el atributo de vértice 0, está ahora asociado con sus datos de vértice.
+
+Una vez se ha especificado como *OpenGL* debería especificar sus datos, solo queda habilitar el atributo de vértice con `glEnableVertexAttribArray`, dándole la localización del atributo de vértice, por defecto estos están deshabilitados.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glGenBuffers(1, &VBO);
+glBindBuffer(GL_ARRAY_BUFFER, VBO);
+glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), static_cast<void*>(nullptr));
+glEnableVertexAttribArray(0);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [vbo_complete]: Subir atributos de vértice a la GPU]
+
+Esta sería la manera de subir la información de los vértices a *OpenGL*, en definitiva, se crea un objeto buffer, se sube la información, se le dice a *OpenGL* donde están los atributos y se habilitan, a partir de aquí se usa el programa que se ha linkado y se hace la llamada a pintar. Esto habría que repetirlo cada vez que se quisiera pintar un objeto, aunque parezca sencillo, es común manejar miles de objetos con bastantes atributos de vértice, con lo cual el proceso pronto empieza a resultar costoso.
+
+# Objetos array de vértices
+
+Un objeto array de vértices o *VAO* (*Vertex Array Object*) se puede enlazar como un objeto de buffer de vértices y cualquier llamada de atributos de vértice siguientes desde ese momento serán almacenadas dentro del *VAO*. Esto tiene la ventaja que al configurar los punteros a los atributos de vértice solo hay que hacer esa llamada una vez y siempre que se quiera pintar el objeto, solo hay que enlazar el *VAO* correspondiente. Esto hace que cambiar entre diferentes datos de vértice y configuraciones de atributos sea tan fácil como enlazar un *VAO* diferente. Todo el estado está almacenado dentro del *VAO*. *OpenGL *en el perfil core exige que se use está técnica.
+
+Un objeto array de vértices almacena lo siguiente: llamadas a `glEnableVertexAttribArray` o `glDisableVertexAttribArray`, configuraciones de atributo de vértices a través de `glVertexAttribPointer`, objetos buffer de vértices asociados con atributos de vértice a través de `glVertexAttribPointer`.
+
+![Figure [res/007_004]: Objetos array de vértices](res/007_004.png)
+
+Generar un *VAO* es muy similar a como se generaba un *VBO*, se genera con `glGenVertexArrays`. Para usarlo simplemente se enlaza con `glBindVertexArray`, desde ese punto se debería configurar el correspondiente *VBO*, los atributos y desenlazar el *VAO* para un uso posterior. Tan pronto como haya que dibujar el objeto, simplemente se enlaza el *VAO* con los ajustes realizados antes de pintarlo.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+uint32_t VAO;
+glGenVertexArrays(1, &VAO);  // Create VAO
+glBindVertexArray(VAO);  // Bind VAO
+
+glBindBuffer(GL_ARRAY_BUFFER, VBO);
+glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), static_cast<void*>(nullptr));glEnableVertexAttribArray(0);
+
+glBindBuffer(GL_ARRAY_BUFFER, 0);  // Unbind VBO
+glBindVertexArray(0);  // Unbind VAO
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [vao_complete]: Usar un objeto array de vértices]
+
+# Render
+
+Para pintar los objetos en *OpenGL* se usa `glDrawArrays`, que pinta primitivas usando el shader activo en cada momento junto con la configuración de atributos de vértice y los *VBO* (a través del *VAO* enlazado).
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glUseProgram(program);
+glBindVertexArray(VAO);
+glDrawArrays(GL_TRIANGLES, 0, 3);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [render]: Pintar un triángulo]
+
+Primero se le informa del shader a usar, se enlaza el *VAO* con los datos de vértices y a continuación se hace la llamada a `glDrawArrays`. El primer parámetro es el tipo de primitiva que se quiere pintar. El segundo parámetro especifica el índice en el que empieza el array de vértices que se quiere pintar, se deja a 0. El último argumento especifica cuántos vértices se quieren pintar, por ahora 3, se pinta un triángulo con los datos, que son los 3 vértices.
+
+![Figure [res/007_005]: Finalmente... el triángulo](res/007_005.png)
+
+# Elementos
+
+Un objeto indispensable en este punto son los objetos buffer de Elementos o *EBO* (*Element Buffer Objects*). Si se quiere pintar un cuadrado en lugar de un triángulo se puede hacer a través de dos triángulos (*OpenGL* básicamente pinta triángulos).
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+float vertices[] = {
+    // first triangle
+    0.5f, 0.5f, 0.0f,   // top right
+    0.5f, -0.5f, 0.0f,  // bottom right
+    -0.5f, 0.5f, 0.0f,  // top left
+    // second triangle
+    0.5f, -0.5f, 0.0f    // bottom right
+    -0.5f, -0.5f, 0.0f   // bottom left
+    -0.5f, 0.5f, 0.0f    // top left
+};
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [quad]: Vértices para pintar un rectángulo]
+
+Estos serían los dos triángulos para pintar. Como se puede observar, algunos vértices están repetidos dos veces, se puede simplificar mucho, y cuanto más grande es el objeto y tiene más vértices aún empeora más. Es mejor solución almacenar tan solo los vértices únicos y especificar en qué orden se quieren pintar esos vértices para formar los triángulos. En este caso solo se tendrían 4 vértices para el rectángulo.
+
+Los objetos buffer de elementos son exactamente como se deberían ordenar los vértices para pintar los triángulos que forman el objeto. Es un buffer que almacena los índices que *OpenGL* usa para decidir qué vértices pintar.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+float vertices[] = { 0.5f, 0.5f, 0.0f,   // top right
+                     0.5f, -0.5f, 0.0f,  // bottom right
+                    -0.5f, -0.5f, 0.0f,  // bottom left
+                    -0.5f, 0.5f, 0.0f    // top left
+};
+
+uint32_t indices[] = { 0, 3, 1,  // first triangle
+                       1, 3, 2   // second triangle
+};
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [quad_2]: Vértices para pintar un rectángulo con índices]
+
+Primero se especifican los 4 vértices únicos, y luego los índices para pintar los dos triángulos (3 por cada uno).
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+uint32_t EBO;
+glGenBuffers(1, &EBO);
+
+glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, *EBO);
+glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [ebo]: Generar un *EBO* y subir sus datos]
+
+Se crea un buffer de la manera habitual, se enlaza, y se suben los datos a la GPU, esta vez especificando que es un `GL_ELEMENT_ARRAY_BUFFER` como destino.
+
+![Figure [res/007_006]: Objeto buffer de elementos](res/007_006.png)
+
+Si se hace uso de un *VAO* en este proceso, el *VAO* también almacena los datos de los elementos, tal como sucedía con los *VBO*. Por tanto, enlazar a un *VAO*, también enlaza el *EBO* correspondiente. Solo hay que tener precaución de al configurar el *VAO* no desenlazar el *EBO* mientras el *VAO* está enlazado, puesto que eso significaría que el *VAO* guardaría un *EBO* vacío.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glBindVertexArray(VAO);  // Bind VAO
+
+glBindBuffer(GL_ARRAY_BUFFER, VBO);
+glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, *EBO);
+glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+
+glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), static_cast<void*>(nullptr));
+glEnableVertexAttribArray(0);
+
+glBindBuffer(GL_ARRAY_BUFFER, 0);  // Unbind VBO
+glBindVertexArray(0);  // Unbind VAO
+glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);  // Unbind EBO
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [vao_complete]: Proceso de crear un *VAO* completo con *VBO* y *EBO*]
+
+Por último, la llamada para el pintado cambia. En lugar de `glDrawArrays`, ahora se usa `glDrawElements` para indicar que se pintan triángulos desde un buffer indexado, usando el *EBO* enlazado en ese momento a través de un *VAO*.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glUseProgram(program);
+glBindVertexArray(VAO);
+glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [render_ebo]: Pintar con un *VAO* con *VBO* y *EBO*]
+
+En la función `glDrawElements` el primer argumento especifica el tipo de primitivas a pintar, el segundo es el número de elementos a pintar (6 vértices), el tercer argumento es el tipo de dato de los elementos `GL_UNSIGNED_INT`, y el último permite especificar un offset en el `EBO`, 0 por ahora.
+
+![Figure [res/007_007]: El quad](res/007_007.png)
+
+# Culling
+
+El orden en que se indican los elementos para pintar un triángulo tiene trascendencia. Puesto que determina si la cara que forma ese triángulo dentro del objeto es una cara frontal o trasera. Por defecto, *OpenGL* determina que los elementos que se relacionan en orden contrario a las agujas del reloj *CCW* (*CounterClockWise*) forman una cara frontal, y las que se relacionan en el mismo orden de las agujas del reloj *CW* (*ClockWise*) forman una cara posterior.
+
+![Figure [res/007_008]: Elementos relacionados CW y CCW](res/007_008.png)
+
+Con lo cual, en el ejemplo anterior, al relacionar los elementos en orden 0,3,1 se forma una cara frontal, puesto que están en orden contrario a las agujas del reloj, si se relacionaran en orden 0,1,3 formaría una cara posterior (orden de las agujas del reloj).
+
+En *OpenGL* una optimización muy común es no pintar las caras traseras de los objetos puesto que no se suelen querer ver.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glEnable(GL_CULL_FACE);
+glCullFace(GL_BACK);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [culling]: Culling de las caras posteriores]
+
+Para ello se habilita con `glEnable(GL_CULL_FACE)`, y se le indica que se quieren ocultar las caras posteriores con `glCullFace(GL_BACK)`.
+
+# Wireframe
+
+Para pintar los triángulos en modo WireFrame, se puede configurar como *OpenGL* pinta sus primitivas a través de `glPolygonMode`, como primer parámetro se le indica que se quieren pintar las caras frontales y traseras, y el segundo que se pinten como líneas.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [wireframe]: Pintado de las líneas del polígono]
+
+Cualquier llamada de pintado posterior pintará los triángulos en WireFrame hasta que se devuelva a su estado normal de rellenar los triángulos.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [wireframe]: Pintado del polígono sólido]
+
+![Figure [res/007_009]: El quad en wireframe, formado por dos triángulos](res/007_009.png)
+
+# Ejercicios
+
+- Pintar dos triángulos, uno al lado del otro (sin formar un quad, de esta forma " /\/\ "), usando glDrawArrays, añadiendo más vértices a los datos (usando un solo VBO)
+- Pintar los dos mismos triángulos usando dos VAOs y VBOs diferentes para sus datos
+- Pintar los dos mismos triángulos usando un solo VAO, VBO y un EBO
+- Crear dos programs que pinten los triángulos del ejercicio anterior, que usen el mismo shader de vértices, pero usen un shader de fragmentos distinto para pintar cada triángulo, uno de cada color
+- Pintar un hexágono centrado en la pantalla, usando un VAO, VBO y EBO, generando los vértices de la manera habitual a mano
+- Pintar el mismo hexágono, pero generando los vértices de manera procedural (usando algún tipo de algoritmo), mediante coordenadas polares
+
+<link rel="stylesheet" href="res/md/viu.css">
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'long'};</script>
+<!-- Markdeep: --><script src="res/md/markdeep.min.js?" charset="utf-8"></script>

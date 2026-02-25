@@ -1,0 +1,144 @@
+<meta charset="utf-8">
+**60GIIN - 006 - Window**
+    <small>©2026 VIU - 60GIIN Programación Gráfica - Iván Fuertes</small>
+
+# Window y contexto
+
+El primer paso de cualquier aplicación gráfica es tener una ventana donde poder pintar cosas y un contexto de render de *OpenGL*. Para ello, en nuestro caso, en el `main.cpp` se incluyen las cabeceras de *GLAD* y *GLFW*.
+
+<script type="preformatted">
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [include]: Incluir cabeceras de *GLAD* y *GLFW*]
+</script>
+
+Es importante incluir *GLAD* antes que *GLFW*, puesto que *GLAD* contiene las cabeceras correctas de *OpenGL*. A continuación, se crea la función `main`, como punto de entrada del programa que creará la ventana de *GLFW*.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+int main(int argc, char* argv[]) {
+  if (!glfwInit()) {
+    std::cout << "Error Initializing GLFW" << std::endl;
+    return -1;
+  }
+
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [main]: Función principal, con los `hints` para *GLFW*]
+
+Primero se inicializa la librería *GLFW* con la llamada a `glfwInit`, y se verifica que se haya podido inicializar. A continuación se configura *GLFW* mediante las llamadas a [`glfwWindowHint`](https://www.glfw.org/docs/latest/window.html#window_hints_wnd). En nuestro caso se le dice a *GLFW* que use la versión 3.3 de *OpenGL*, asegurando que si un usuario de nuestra aplicación no tiene al menos un driver que soporte esa versión de *OpenGL* fallará en ese punto. Para averiguar la versión que se tiene instalada, las extensiones y capacidades se puede usar [OpenGL Extensions Viewer](http://realtech-vr.com/home/glview). También se le indica que use el perfil `core` de *OpenGL*.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+GLFWwindow* window = glfwCreateWindow(800, 600, "60GIIN", nullptr, nullptr);
+if (!window) {
+  std::cout << "Error Creating Window" << std::endl;
+  glfwTerminate();
+  return -1;
+}
+
+glfwMakeContextCurrent(window);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [window]: Crear ventana]
+
+Se crea un objeto `GLFWwindow`, que contendrá la ventana, con `glfwCreateWindow` se le da el tamaño de la misma en los dos primeros parámetros, el tercer argumento es el nombre de la ventana, el cuarto argumento indica el monitor, si se usa modo pantalla completo o `NULL` para usar modo ventana, el quinto se usa para compartir contextos, por ahora se queda en `NULL`. La función devuelve un objeto `GLFWwindow` que se necesitará para posteriores operaciones. Entonces se le indica a *GLFW* que haga del contexto de nuestra ventana el contexto principal del hilo actual.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+if (!gladLoadGL()) {
+  std::cout << "Error Initializing GLAD" << std::endl;
+  glfwTerminate();
+  return -1;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [glad]: Inicializar *GLAD*]
+
+Y antes de hacer cualquier llamada a *OpenGL* se necesita inicializar *GLAD*. Para eso se llama a la función `gladLoadGL`.
+
+Antes de empezar a pintar hay que hacer una última cosa, decirle a *OpenGL* el tamaño de la ventana final, en apartados anteriores se hablaba del *viewport* como el paso final para pasar de coordenadas de clip normalizadas a coordenadas de pantalla, y como *OpenGL* lo gestionaba de manera automática, aquí es donde se configura el *viewport* a través de la función `glViewPort`, donde se le pasan como los dos primeros parámetros la localización de la esquina inferior izquierda y como los dos siguientes el ancho y alto en píxeles.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+void onChangeFrameBufferSize(GLFWwindow* window, const int32_t width, const int32_t height) {
+  glViewport(0, 0, width, height);
+  std::cout << width << " " << height << std::endl;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [viewport]: Cambiar el tamaño del *viewport*]
+
+Para ello se crea una función que se va a ejecutar siempre que se cambien las dimensiones de la ventana y va a ajustar el tamaño del *viewport* de *OpenGL* al tamaño de la ventana actual.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glfwSetFramebufferSizeCallback(window, onChangeFrameBufferSize);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [resize_callback]: Definir `callback` para la redimensión de la ventana]
+
+Y solo queda determinar el `callback` para que *GLFW* haga la llamada cada vez que cambie el tamaño de la ventana. Cuando la ventana se visualiza por primera vez se llama a esta `callback` con las dimensiones iniciales.
+
+Hay muchas otras `callbacks` que *GLFW* pone a disposición, se suelen configurar después de haber creado la ventana, pero antes de entrar en el `MainLoop`.
+
+Al acabar nuestro programa es importante liberar y limpiar todos los recursos utilizados en el mismo.  Para ello en último lugar hay que indicarle a *GLFW* que apague todos sus sistemas.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glfwTerminate();
+
+return 0;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [close_glfw]: Cerrar *GLFW*]
+
+# Main Loop
+
+Ahora mismo la aplicación muestra una ventana, pero acto seguido se cierra. Lo que se busca es mantener esa ventana abierta y que la aplicación pinte cosas en ella y responda a las acciones del usuario a través del teclado, ratón, joystick,...
+
+Para ello se crea un bucle infinito, que se mantiene en ejecución hasta que se cumplen unas determinadas condiciones para salir de él y se cierra la aplicación. Esto se llama *main loop*, o bucle principal, y es una de las partes más importantes de cualquier aplicación multimedia.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glClearColor(0.0f, 0.3f, 0.6f, 1.0f);
+
+while (!glfwWindowShouldClose(window)) {
+  handleInput(window);
+
+  render();
+
+  glfwSwapBuffers(window);
+  glfwPollEvents();
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [main_loop]: Main Loop]
+
+Este sería un ejemplo muy básico de un bucle principal. Se ejecutará mientras la ventana esté abierta (verificando en el `while` si alguien le ha dicho a la ventana que debe cerrarse), primero gestionará el input del usuario, a continuación, pintará, después hará el cambio de buffers, y por último *GLFW* gestionará sus eventos, callbacks...
+
+Se suele usar una técnica llamada *doble buffer*. Cuando una aplicación pinta en un buffer simple las imágenes que se muestran suelen verse parpadeantes, o con flickering. Esto es porque la imagen de salida no se pinta al instante, sino que se hace píxel a píxel y normalmente de izquierda a derecha y de arriba abajo. Con lo cual es bastante probable que mientras esa imagen se esté pintando en pantalla, nuestra aplicación ya esté escribiendo en ella la nueva información para el frame siguiente, con lo cual se ven artefactos e información incorrecta. Para evitar este problema se usa el doble buffer. El buffer frontal contiene la imagen que se va a mostrar en la pantalla, mientras que todos los comandos de dibujado que la aplicación ejecuta van al buffer de atrás, evitando el flickering. Y tan pronto como todo el dibujado de nuestra aplicación acaba se hace un intercambio de buffers, mandando todo nuestro buffer de atrás al frontal para ser mostrado en pantalla. Esto se consigue en *GLFW* con la llamada a `glfwSwapBuffers`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+void handleInput(GLFWwindow* window) {
+  if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+    glfwSetWindowShouldClose(window, true);
+  }
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [handle_input]: Gestionar la entrada del usuario]
+
+En la función `handleInput` es donde manejamos el input del usuario, las teclas que ha pulsado, movimientos de ratón, joystick, gamepads,... En cada iteración del *main loop* se le pregunta a *GLFW* por el estado de estos dispositivos, en el caso del teclado esto se hace con `glfwGetKey`, en este caso preguntando por el estado de la tecla *ESCAPE*, para en caso de estar pulsada informar a *GLFW* que la ventana se tiene que cerrar, y esto causa que se salga del *main loop*.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+void render() {
+  glClear(GL_COLOR_BUFFER_BIT);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [render]: Función de pintado]
+
+Y por último, falta pintar nuestro mundo. Al principio de cada frame, lo primero que se necesita es limpiar la pantalla, de lo contrario estaríamos pintando sobre los resultados del frame anterior. Se determina el color con el que se quiere limpiar con `glClearColor`, donde cada parámetro corresponde con el color descompuesto *RGBA*, *Red*, *Green*, *Blue*, *Alpha*. Luego se ejecuta el limpiado con `glClear`, especificando que buffer se quiere borrar, por ahora solo el buffer de color.
+
+Esto mostrará una pantalla que se está limpiando continuamente en color azul, hasta que se pulse la tecla *ESC*, como muestra de que todo funciona correctamente y ya está implementada la base para empezar a trabajar en profundidad en el render.
+
+![Figure [res/006_001]: Ventana en ejecución](res/006_001.png)
+
+# Ejercicios
+
+- Crear una clase Window, que encapsule la funcionalidad básica de una ventana, su creación, cambiar su tamaño, responder al resize del usuario, detectar una tecla pulsada, o ejecutar el cambio de frame.
+- Crear una clase Input, que encapsule la funcionalidad básica de un sistema de iteración con el usuario a través del teclado y teclado.
+
+<link rel="stylesheet" href="res/md/viu.css">
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'long'};</script>
+<!-- Markdeep: --><script src="res/md/markdeep.min.js?" charset="utf-8"></script>

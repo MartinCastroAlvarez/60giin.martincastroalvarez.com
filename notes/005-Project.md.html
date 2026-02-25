@@ -1,0 +1,178 @@
+<meta charset="utf-8">
+**60GIIN - 005 - Proyecto**
+    <small>©2026 VIU - 60GIIN Programación Gráfica - Iván Fuertes</small>
+
+# Introducción
+
+Para poder realizar los ejemplos del curso se van a necesitar de ciertas librerías auxiliares, como *GLFW* (para poder tener una ventana y un contexto de renderizado), *GLAD* (para tener acceso a *OpenGL*) y *GLM* (librería matemática). También se asume que se usa *Visual Studio 2022 Community* como *IDE* y compilador de C++ y se trabaja sobre *Windows*, aunque soportar otras plataformas y compiladores es tarea sencilla.
+
+# Librerías
+
+Se hace uso de algunas libreras de terceros. Se incluyen las cabeceras e implementaciones en las carpetas correspondientes en el proyecto, de esa manera las librerías se compilan siempre junto al proyecto y así se evitan problemas de incompatibilidades con binarios precompilados.
+
+## GLFW
+
+El primer paso para desarrollar una aplicación que haga uso de *OpenGL* es crear una ventana con un contexto de *OpenGL* para poder pintar sobre ella. Estas operaciones son específicas para cada sistema operativo, y *OpenGL* se abstrae de ellas, con lo cual ese trabajo recae sobre el desarrollador.
+
+Hay varias librerías que hacen ese trabajo y ahorran la tarea de trabajar con el sistema operativo y dan una ventana y un contexto de render, así como funcionalidades adicionales como manejar el *input* del usuario. Algunas de las más populares son *GLUT*, *SDL*, *SFML* o *GLFW*. Aquí se usará [*GLFW* (v3.4)](https://www.glfw.org/).
+
+*GLFW* es una librería open source, multiplataforma, escrita en C, específica para *OpenGL*, que crea un contexto de render para *OpenGL* y muestra una ventana donde poder pintar.
+
+## GLAD
+
+Puesto que *OpenGL* es tan solo una especificación, es tarea del fabricante de los drivers implementar dicha especificación que una tarjeta gráfica soporta. Ya que hay infinidad de diferentes drivers de *OpenGL*, la localización de sus funciones no es conocida en tiempo de compilación y se necesita consultar en tiempo de ejecución para poder realizar las llamadas correctas. Para ello es importante apoyarse en alguna librería que haga ese trabajo específico, como *GLAD*.
+
+*GLAD* es una librería open source, usa un web service donde configurar los parámetros al gusto y genera los fuentes correctos para integrar en nuestro proyecto.
+
+En el [web service](https://glad.dav1d.de/), hay que seleccionar C++ como lenguaje, seleccionar una versión de *OpenGL* superior a 3.3 (en función del soporte de *OpenGL* de la *GPU* donde vamos a ejecutar nuestros proyectos), el profile seleccionado a `Core` y que la opción de `Generate a Loader` esté activada. Pulsar `Generate` y descargar la librería.
+
+## GLM
+
+Para poder trabajar cómodamente con vectores, matrices y todas las operaciones asociadas a ellos es conveniente disponer de una librería matemática específica para ello. Para ello se opta por el uso de [GLM (v1.0.1)](https://github.com/g-truc/glm/releases). GLM es una librería solo de cabeceras, lo que significa que solo hay que incluir las cabeceras en el proyecto.
+
+# Estructura del proyecto
+
+La estructura básica de carpetas es la siguiente:
+
+- `include`, en subcarpetas las dependencias de las librerías auxiliares
+- `include/engine`, donde dejar todas las cabeceras propias `*.h` y `*.hpp` del motor que se va crear
+- `src/deps`, donde están las implementaciones de todas las dependencias
+- `src/engine`, los ficheros `*.cpp` con las implementaciones propias del motor
+- `cmake`, ficheros auxiliares para la configuración de *CMake*
+- `projects`, carpeta donde estarán las implementaciones de las actividades, teniendo una subcarpeta disponible para cada uno de ellas. En cada una de esas carpetas habrá un `main.cpp` que contendrá el código específico para ese ejercicio.
+
+![Figure [res/005_001]: Estructura de carpetas](res/005_001.png)
+
+# Visual Studio
+
+*Visual Studio* es un entorno de desarrollo integrado (IDE), compatible con varios lenguajes de programación, entre ellos C y C++. Es el IDE más usado para desarrollar aplicaciones en C++ bajo *Windows*. La última versión disponible es la 2022, y la edición [*Community*](https://visualstudio.microsoft.com/es/vs/community/) permite trabajar de manera gratuita dentro del entorno.
+
+Durante la instalación se pueden seleccionar múltiples paquetes, en la figura a continuación se pueden observar los relevantes para esta asignatura.
+
+![Figure [res/005_002]: Paquetes de instalación de Visual Studio 2022](res/005_002.png width="200px")
+
+# CMake
+
+El primer paso es generar el proyecto para poder trabajar desde un IDE, y empezar a programar en las demos. Para ello se va a usar [*CMake*](https://cmake.org/).
+
+*CMake* es un sistema de generación de scripts de compilación (*build system*), que utiliza ficheros de configuración independientes de la plataforma y del compilador para generar un proyecto. Se controla la compilación de los proyectos, y se puede cubrir todo el proceso de desarrollo de software, desde la creación del proyecto, su compilación, lanzamiento de tests y empaquetado.
+
+El proyecto contiene un fichero `CMakeLists.txt`, en el que se describe el proyecto usando un lenguaje propio. Ahí se detallan donde están los ficheros fuentes a compilar, los directorios de inclusión, las librerías de las que se depende, los ejecutables o librerías que se generan, opciones de compilación,... Ese fichero es procesado por *CMake* y se generan los ficheros del proyecto para el entorno que se elija.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cmake linenumbers
+cmake_minimum_required(VERSION 3.25)
+
+project(60GIIN CXX C)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [cmake_minimum]: Inicio del fichero de CMake]
+
+Al principio del fichero `CMakeLists.txt` se indica la versión mínima de *CMake* aceptada, se genera el nombre del proyecto y se indica que va a contener código C++ y C.
+
+A continuación se genera la librería estática para el motor que se va a ir creando conforme avancen las clases y es el objetivo final de la asignatura. Por ahora se incluyen solo una cabecera y un fichero de código, `placeholder`, que van a hacer de sustitutos hasta que se tenga código real. Se incluyen los directorios oportunos, se hacen los `define` pertinentes, y se configura la librería según la plataforma y el compilador. Para esto último hay varios ficheros `cmake` dentro de la carpeta `cmake` del proyecto, que van a configurar una librería o ejecutable según la plataforma de trabajo (*Windows*, *Linux* o *MacOS*), y usarán las librerías de terceros de manera adecuada según el caso.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cmake linenumbers
+set(ENGINE_SRC_FILES
+  ${CMAKE_CURRENT_LIST_DIR}/src/engine/placeholder.cpp)
+
+set(ENGINE_HEADER_FILES
+  ${CMAKE_CURRENT_LIST_DIR}/include/engine/placeholder.hpp)
+
+add_library(EngineLib STATIC ${ENGINE_SRC_FILES} ${ENGINE_HEADER_FILES} ${DEPS_SRC_FILES_COMMON})
+
+target_include_directories(EngineLib PRIVATE ${INCLUDE_PATHS})
+target_compile_definitions(EngineLib PRIVATE -D_GLFW_USE_OPENGL=1)
+target_compile_features(EngineLib PRIVATE cxx_std_17)
+
+configure_platform(EngineLib)
+configure_compiler(EngineLib)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [cmake_engine_lib]: Configuración del `Engine` como librería estática]
+
+Una vez definida la librería con el motor (por ahora sin código), es el momento de crear todos los proyectos para las actividades que se van a ver en clase y los ejercicios que se van a tener que resolver.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cmake linenumbers
+set(PROJECT_LIST 01_Window 02_Triangle)
+set(PROJECTS_PATH ${CMAKE_CURRENT_LIST_DIR}/projects)
+
+foreach(PROJECT ${PROJECT_LIST})
+  file(MAKE_DIRECTORY ${PROJECTS_PATH}/${PROJECT})
+  file(TOUCH ${PROJECTS_PATH}/${PROJECT}/main.cpp)
+
+  add_executable(${PROJECT} ${PROJECTS_PATH}/${PROJECT}/main.cpp ${DEPS_SRC_FILES})
+  target_include_directories(${PROJECT} PRIVATE ${INCLUDE_PATHS})
+  target_compile_definitions(${PROJECT} PRIVATE -D_GLFW_USE_OPENGL=1)
+  target_link_libraries(${PROJECT} PRIVATE EngineLib)
+  target_compile_features(${PROJECT} PRIVATE cxx_std_17)
+  configure_platform(${PROJECT})
+  configure_compiler(${PROJECT})
+endforeach()
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [cmake_projects]: Configuración de los proyectos]
+
+De manera similar a como se configuraba el motor, se hace aquí para cada proyecto, pero se genera un ejecutable en lugar de una librería. Se crea una lista con todos los proyectos que se necesitarán, y se recorre generando un ejecutable para cada uno de ellos, configurando correctamente los ficheros de compilación, directorios de inclusión, definiciones, configuraciones por plataforma o compilador.
+
+Se abre el interfaz visual de *CMake* (se puede realizar también todo el proceso desde la linea de comandos). Se le indica donde está situado el fichero `CMakeLists.txt`, que en este caso será la raíz del proyecto, y se especifica donde se desea que se construyan los binarios, por norma general se indica una carpeta nueva `build` dentro del proyecto para no mezclar esos archivos con los fuentes del proyecto y mantener una estructura limpia.
+
+![Figure [res/005_003]: CMake con los directorios configurados](res/005_003.png)
+
+Se pulsa el botón `Configure`, para proceder a configurar el proyecto. Aquí hay que elegir el generador/IDE para el cual se quiere generar dicho proyecto. Aquí daremos por hecho que se usa Visual Studio 2022 y los compiladores nativos a este.
+
+![Figure [res/005_004]: Generando para Visual Studio 2022 x64](res/005_004.png)
+
+En ese momento *CMake* se pone a trabajar, comprueba que *Visual Studio* está disponible y que los compiladores para C y C++ funcionan correctamente y en la carpeta `build` ha dejado sus ficheros de *Cache*. Si todo ha ido bien habrá salido un mensaje de `Configuring Done`, y ya se está listo para generar el proyecto.
+
+![Figure [res/005_005]: CMake, proyecto configurado](res/005_005.png)
+
+Si se pulsa el botón `Generate`, entonces es cuando se genera todo el proyecto para el generador/IDE seleccionado. Si todo ha ido bien aparecerá un mensaje de `Generating Done`. En ese punto se puede pulsar el botón `Open Project`, que abrirá el IDE, *Visual Studio* en este caso, con el proyecto correctamente configurado y listo para empezar a trabajar. Al inicio cada proyecto tendrá un fichero `main.cpp` vacío sobre el que desarrollar.
+
+![Figure [res/005_006]: Visual Studio con el proyecto configuradao](res/005_006.png)
+
+# Otras plataformas
+
+Hasta ahora se suponía que se usaba Windows como sistema operativo y *Visual Studio 2022 Community* como IDE para trabajar. Pero si se quiere usar alguna distribución de Linux o MacOs para trabajar se puede usar *Visual Studio Code* para ello. Aquí se va a mostrar la manera de configurar el entorno dentro de un Ubuntu y MacOs.
+
+## Linux/MacOS
+
+En Linux hay que instalar algunos paquetes, es recomendable actualizar los repositorios con `apt-get update` antes. Se necesitan los paquetes `build-essential`, `xorg-dev` y `libgl1-mesa-dev`, se pueden instalar con `apt-get install`.
+
+En MacOS es necesario instalar las *Apple Developer Tools*, eso suele suponer instalar *XCode* completo o bien solo las *Command Line Tools* (si no se va a necesitar *XCode*). Para esto último hay que entrar en la [web de devlopers de Apple](https://developer.apple.com/download/all/) y descargar el fichero `.dmg` de la versión del SO correcto e instalarlo.
+
+De igual manera también habría que instalar *Git* y *CMake* en cualquiera de las dos plataformas.
+
+El uso de *CMake* desde linea de comandos es idéntico en ambas plataformas, las diferencias entre ellas ya se tienen en cuenta en los propios ficheros *CMake* del proyecto, concretamente en `deps_files.cmake` y `platform.cmake`.
+
+Usando *CMake* desde la linea de comandos, primero hay que crear una carpeta `build` en la raiz del proyecto para dejar ahí todos los ficheros generados por *CMake* y los binarios, se cambia de directorio a `build`. Desde ese directorio se lanza *CMake*, primero para configurar/generar el proyecto (por defecto usa *Unix Makefiles*), indicándole donde está el fichero `CMakeLists.txt`, en este caso en el directorio padre.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ bash linenumbers
+$ mkdir build
+$ cd build
+$ cmake ../
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [cmake_generate_linux]: Generar el proyecto con *CMake* en *Bash*]
+
+![Figure [res/005_007]: CMake generando el proyecto en Linux](res/005_007.png)
+
+A continuación, para compilar el subproyecto deseado, se le indica a *CMake* el parámetro `build`, la carpeta donde trabajar (en este caso la actual, indicada con un punto), el `target` o subproyecto deseado (en este caso `01_Window`) y la configuración (*Debug*/*Release*).
+
+![Figure [res/005_008]: CMake compilando el proyecto 01_Window](res/005_008.png)
+
+Una vez compilado se puede llamar al ejecutable compilado y probar su funcionamiento.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ bash linenumbers
+$ ./01_Window
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [cmake_run]: Lanzar el proyecto con `01_Window` en *Bash*]
+
+## Visual Studio Code
+
+Para usar *Visual Studio Code* como IDE de desarrollo y depuración primero hay que descargarlo e instalarlo desde su [página](https://code.visualstudio.com/).
+
+Hay que instalar la extensión para C/C++. Para eso en *VSCode* se pincha en el icono de extensiones en la barra lateral, se busca C++ y se pincha en `Instal`l y luego en `Reload`.
+
+![Figure [res/005_009]: Extensión de C/C++ en VSCode](res/005_009.png)
+
+Se hace `Open Folder` sobre la carpeta raíz del proyecto para tener acceso al mismo desde *VSCode*. Se puede navegar hasta los ficheros, abrirlos y editarlos para escribir el código necesario. Para compilar y ejecutar los cambios se lanza desde la terminal el comando de *CMake* visto anteriormente.
+
+<link rel="stylesheet" href="res/md/viu.css">
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'long'};</script>
+<!-- Markdeep: --><script src="res/md/markdeep.min.js?" charset="utf-8"></script>
