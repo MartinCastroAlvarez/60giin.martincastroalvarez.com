@@ -52,8 +52,9 @@ uint32_t createProgram() {
 
   const char* fragmentShaderSource = "#version 330 core\n"
     "out vec4 FragColor;\n"
+    "uniform vec4 mColor;"
     "void main() {\n"
-    "  FragColor = vec4(0.7, 0.2, 0.2, 1.0);\n"
+    "  FragColor = mColor;\n"
     "}\0";
 
   const uint32_t fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
@@ -113,6 +114,12 @@ void render(const uint32_t program, const uint32_t VAO) {
 
   glUseProgram(program);
   glBindVertexArray(VAO);
+
+  float time = glfwGetTime();
+  float color = sin(time) / 2.0f + 0.5f;
+  int mColorLocation = glGetUniformLocation(program, "mColor");
+  glUniform4f(mColorLocation, color, 0.0f, 0.0f, 1.0f);
+
   glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
 }
 
