@@ -80,5 +80,5 @@ set_source_files_properties(
     ${DEPS_SRC_FILES_LINUX}
     ${DEPS_SRC_FILES_MACOS}
     PROPERTIES
-    COMPILE_FLAGS "-W0"
+    COMPILE_FLAGS "-W0"   #"-w"  for linux mint -> gcc13.3.0
 )
