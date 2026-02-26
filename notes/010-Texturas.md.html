@@ -1,0 +1,356 @@
+<meta charset="utf-8">
+**60GIIN - 010 - Texturas**
+    <small>©2026 VIU - 60GIIN Programación Gráfica - Iván Fuertes</small>
+
+# Introducción
+
+Para conseguir que los objetos tengan más realismo se suelen usar texturas que se pintan sobre los objetos. Una textura es una imagen 2D usada para dar detalle a un objeto, es como una hoja de papel que envuelve el objeto, y puesto que se puede insertar mucho detalle en una sola imagen, se puede dar la ilusión de que el objeto tiene mucho detalle sin apenas añadir vértices extra.
+
+![Figure [res/010_001]: Textura aplicada a una malla 3D para añadir detalle](res/010_001.png)
+
+La técnica se conoce como mapeado de UV´s, que consiste en proyectar una textura 2D sobre un modelo 3D. Cuando un modelo se crea como una malla poligonal usando un software 3D, se generan las coordenadas de textura o uv´s para cada vértice de la malla. Y estas corresponden con un pixel/texel de la imagen 2D, que es mapa de textura UV.
+
+![Figure [res/010_002]: Unwrapping de un cubo](res/010_002.png)
+
+Para poder mapear una textura a un triángulo hay que decirle a cada vértice a qué parte de la textura corresponde. Por tanto, cada vértice tiene un atributo extra, llamado coordenada de textura asociado a él, que especifica de que parte de la imagen de textura toma las muestras. La interpolación de fragmentos hace el resto del trabajo para el resto de los fragmentos.
+
+Las coordenadas de textura van de 0 a 1, en los ejes `x` e `y` (siempre se usan texturas 2D). Al proceso de conseguir el color de la textura usando coordenadas de textura se llama muestreado (`sampling`). Las coordenadas de textura empiezan en `(0,0)` en la esquina inferior izquierda y acaban en `(1,1)` en la esquina superior derecha de la textura.
+
+![Figure [res/010_003]: Coordenadas de textura](res/010_003.png)
+
+Se especifican 3 coordenadas de textura para cada triángulo. Si se quisiera mapear el triángulo de ejemplos anteriores, una solución podría ser mapear el vértice inferior izquierdo a la esquina inferior izquierda de la textura `(0, 0)`, el vértice inferior derecho a la esquina inferior derecha de la textura `(1,0)` y el vértice de arriba al centro superior de la textura `(0.5, 1)`. Habría que pasar estas coordenadas de textura como atributos al shader de vértices, que las reenviaría al shader de fragmentos, que las interpolaría para cada fragmento.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+  float textCoords[] = {1.0f, 1.0f,
+                        1.0f, 0.0f,
+                        0.0f, 0.0f,
+                        0.0f, 1.0f
+  };
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [textcoords]: Coordenadas de textura]
+
+![Figure [res/010_004]: Triángulo con coordenadas de textura](res/010_004.png)
+
+# Wrapping
+
+Las coordenadas de textura van desde `(0,0)` a `(1,1)`. El comportamiento por defecto de *OpenGL* cuando se especifican coordenadas de textura fuera de ese rango es repetir la imagen de textura, (básicamente se ignora la parte entera de la coordenada de textura), pero hay más opciones.
+
+- `GL_REPEAT`, es el comportamiento por defecto, repite la imagen de textura.
+- `GL_MIRRORED_REPEAT`, igual al anterior pero espejado.
+- `GL_CLAMP_TO_EDGE`, las coordenadas se limitan entre 0 y 1, cualquiera por encima/debajo de ese rango se deja a 1 o 0. El resultado es que las coordenadas se quedan recortadas al borde, resultando un patrón al borde ajustado.
+- `GL_CLAMP_TO_BORDER`, las coordenadas fuera del rango recogen un color plano especificado por el usuario.
+
+![Figure [res/010_005]: Wrapping de texturas](res/010_005.png)
+
+Cada una de estas opciones puede ser establecida independientemente para cada eje de coordenadas (`s`, `t`, equivalentes a `x`, `y`) con la función `glTexParameter`, para la textura activa en ese momento.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [wrapping]: Establecer método de `wrapping`]
+
+El primer parámetro especifica el destino de textura, como se está trabajando en texturas 2D, el destino es `GL_TEXTURE_2D`. El segundo argumento es el eje sobre el que la opción va a afectar. El tercer argumento es el modo de wrapping elegido. En este caso para el eje `s` (`x`) se elige el modo `GL_MIRRORED_REPEAT`, y en el eje `t`(`y`) el modo `GL_CLAMP_TO_EDGE`, para la textura activa en ese momento.
+
+Si se especifica el modo `GL_CLAMP_TO_BORDER` también hay que pasar un color para el borde.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+float borderColor[] = { 1.0f, 1.0f, 0.0f, 1.0f };
+glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [wrapping_color]: Establecer color para el borde]
+
+Para esto se usa la variante `fv` de `glTexParameter`, con `GL_TEXTURE_BORDER_COLOR` como opción y el array de `floats` que definen el color.
+
+# Filtrado de texturas
+
+Las coordenadas de textura no dependen de la resolución, y pueden ser cualquier valor en coma flotante, así que *OpenGL* tiene que averiguar a qué píxel de textura (`texel`) hay que mapear cada coordenada de textura. Esto toma especial relevancia si se tiene un objeto muy grande y una textura con muy poca resolución. Para el filtrado de texturas *OpenGL* tiene varias opciones, las más importantes `GL_NEAREST` y `GL_LINEAR`.
+
+`GL_NEAREST` (filtrado del vecino más cercano) es el método por defecto. En este modo *OpenGL* selecciona el color cuyo centro está más cerca de la coordenada de textura. En la imagen se aprecian 4 píxeles, y la coordenada de textura de donde se quiere samplear es la cruz, el `texel` superior izquierdo es el que tiene su centro más cerca de la coordenada de textura, y por eso es el color seleccionado.
+
+![Figure [res/010_006]: Filtrado `nearest`](res/010_006.png)
+
+`GL_LINEAR` (filtrado bilineal) coge un valor interpolado entre los `texel` vecinos de la coordenada de textura. Cuanto menor sea la distancia de la coordenada de textura al centro del `texel`, más contribuye dicho `texel` al color final sampleado.
+
+![Figure [res/010_007]: Filtrado `linear`](res/010_007.png)
+
+El resultado final de usar uno u otro método es el siguiente, usando una textura de baja resolución en un objeto grande la textura hay que ampliarla y los `texels` individuales toman importancia.
+
+![Figure [res/010_008]: Filtrado `nearest` vs `linear`](res/010_008.png)
+
+El método `nearest` suele presentar patrones de bloques donde se pueden ver claramente los píxeles de la textura, mientras que el `linear` produce un patrón mucho más suave donde los píxeles individuales son menos visibles.
+
+El filtrado se puede seleccionar para operaciones de ampliación o reducción de manera independiente. Se puede usar un método al reducir la textura y otro distinto al ampliarla.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [filtering]: Filtrado distinto para ampliar o reducir]
+
+Mediante `glTexParameter`, haciendo uso de `GL_TEXTURE_MIN_FILTER` o `GL_TEXTURE_MAG_FILTER`, se especifica el método elegido para hacer el filtrado.
+
+# Mipmap
+
+Una optimización frecuente a la hora de trabajar con texturas es recurrir al `mipmapping`. Esta es una técnica mediante la cual se generan varias versiones de cada textura de resolución diferente y se aplica una de estas versiones en función de la distancia a la que el objeto que se está pintando se encuentra de la cámara. Si un objeto está muy lejos de la cámara, probablemente acabe produciendo solo unos pocos fragmentos, por tanto, no tiene mucho sentido que haga uso de una textura de alta resolución, sobre todo porque *OpenGL* tiene que recorrer y samplear una textura muy grande y el coste es mayor, además de producir algunos artefactos visibles en objetos pequeños.
+
+Los `mipmaps` por tanto son una colección de imágenes de textura donde cada textura es la mitad de pequeña que la anterior. A partir de cierta distancia desde la cámara, *OpenGL* usará una textura `mipmap` diferente que se adapte mejor a esa distancia. Puesto que el objeto está lejos, esa menor resolución no será apreciable por el usuario.
+
+![Figure [res/010_009]: Textura con `mipmaps`](res/010_009.png)
+
+*OpenGL* provee funcionalidad para crear estas colecciones de texturas de manera automática con una sola llamada a `glGenerateMipMaps` una vez creada la textura.
+
+Cuando *OpenGL* cambia de niveles de `mipmapping` cuando está pintando, se pueden mostrar ciertos artefactos, como bordes visibles entre dos capas de `mipmaps`. Para evitar esto se puede filtrar entre `mipmaps` usando filtrado `nearest` o `linear` entre niveles de `mipmap`. Para especificar el método de filtrado entre niveles de `mipmaps` se pueden reemplazar los métodos de filtrado originales con una de las siguientes opciones:
+
+- `GL_NEAREST_MIPMAP_NEAREST`, coge el `mipmap` más cercano para encontrar el tamaño del píxel y la interpolación `nearest` para el sampleo de la textura
+- `GL_LINEAR_MIPMAP_NEAREST`, coge el nivel de `mipmap` más cercano y samplea usando interpolación lineal
+- `GL_NEAREST_MIPMAP_LINEAR`, interpola linealmente entre los dos `mipmaps` que más se acercan al tamaño de un píxel y samplea usando interpolación `nearest`
+- `GL_LINEAR_MIPMAP_LINEAR`, interpola entre los dos mipmaps más cercanos y samplea la textura usando interpolación lineal
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [mipmapping]: Filtrado de reducción con `mipmaps`]
+
+Un error común es poner filtrado de `mipmaps` a un filtro de ampliación. Esto no tiene ningún efecto, puesto que la técnica de `mipmapping` se usa siempre para reducir.
+
+# Cargar textura
+
+Las imágenes de textura se pueden almacenar en docenas de formatos distintos, cada una con su propia estructura y ordenamiento de los datos. La solución a este problema suele ser usar una librería de carga de imágenes que lidie con todos esos problemas.
+
+Se recomienda el uso de la librería [stb_image](https://github.com/nothings/stb) de `Sean Barret`. Es capaz de cargar los formatos de imagen más comunes y es muy fácil de integrar en cualquier proyecto, es una librería de una sola cabecera. Solo hay que incluirla en el proyecto como una dependencia más.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [stb_image]: Incluir `stb_image`]
+
+Para usarla, primero se hace un define de `STB_IMAGE_IMPLEMENTATION` así el preprocesador modifica la cabecera de manera que solo contiene el código fuente relevante y se convierte de manera efectiva en un fichero `.cpp` de implementación. Luego solo resta incluirla para poder usarla.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+int width, height, nChannels;
+unsigned char* data = stbi_load("../assets/floor.jpg", &width, &height, &nChannels, 0);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [load_image]: Cargar imagen con `stb_image`]
+
+Su uso es muy simple, llamar a la función `stbi_load`, como primer parámetro la ruta de la imagen a cargar, y a continuación tres enteros donde `stb_image` dejará los datos referentes a ancho, alto y profundidad de la imagen.
+
+# Generar textura
+
+Como cualquier otro objeto en *OpenGL* una textura es referenciada por su `id`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+uint32_t texture;
+glGenTextures(1, &texture);
+glBindTexture(GL_TEXTURE_2D, texture);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [gen_texture]: Generar una textura]
+
+Se crea mediante la llamada a `glGenTextures`, con el primer parámetro como el número de texturas a crear. Y a continuación se enlaza para que los siguientes comandos configuren la textura.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [config_texture]: Configurar una textura]
+
+Se configuran los parámetros de filtrado y mipmaps como se ha visto en secciones anteriores.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+glGenerateMipmap(GL_TEXTURE_2D);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [upload_texture]: Subir textura y generar `mipmaps`]
+
+Una vez se ha cargado en data la imagen con `stb_image`, se puede proceder a subir la textura a la GPU. Esto se hace con `glTexImage2D`. Primer parámetro, el destino de la textura, poniéndolo a `GL_TEXTURE_2D` se hace que genere una textura en el objeto enlazado en el mismo destino (así cualquier textura enlazada a destinos `GL_TEXTURE_1D` o `GL_TEXTURE_3D` no resulta afectada). El segundo argumento especifica el nivel de `mipmap` para el cual se quiere crear una textura si se quieren crear los niveles de `mipmap` manualmente, se deja al nivel base que es 0. El tercer parámetro le dice a *OpenGL* en que formato se quiere almacenar la textura, la imagen a cargar solo tiene valores `RGB`, así que se guardan solo valores `RGB`. El cuarto y quinto parámetro son el ancho y alto de la textura, datos que nos ha dado `stb_image` al leer la imagen. El sexto valor siempre ha de ser 0. El séptimo y octavo especifican el formato y tipo de dato de la imagen de origen. Se ha cargado la imagen con valores `RGB` y guardado como `chars` (`bytes`), así que se pasan los correspondientes valores. El último argumento es el puntero a los datos de la imagen.
+
+Una vez `glTexImage2D` ha acabado, el objeto textura que esta enlazado ya tiene la imagen de textura agregada. Sin embargo, solo tiene la imagen del nivel base, si se quieren usar `mipmaps` hay que especificar todos los diferentes niveles manualmente (incrementando en cada llamada el segundo argumento), o se puede llamar a `glGenerateMipmap`, que creará automáticamente todos los `mipmaps` que se necesiten para la textura enlazada.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+stbi_image_free(data);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [free_image]: Liberar datos de la imagen en CPU]
+
+Como buena práctica se liberan los recursos, y se eliminan los datos de la imagen cargada en la CPU, no se necesitan más puesto que ya están en la GPU, donde se van a usar.
+
+# Aplicar textura
+
+Se va a usar el rectángulo que se pintó en secciones anteriores. Ahora hay que informar a *OpenGL* como samplear la textura, así que se actualizan los datos de vértice con el nuevo atributo de coordenadas de textura.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+float vertices[] = {
+    // positions         // colors             // texture coords
+    0.5f, 0.5f, 0.0f,    1.0f, 0.0f, 0.0f,     1.0f, 1.0f,
+    0.5f, -0.5f, 0.0f,   0.0f, 1.0f, 0.0f,     1.0f, 0.0f,
+    -0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,     0.0f, 0.0f,
+    -0.5f, 0.5f, 0.0f,   1.0f, 1.0f, 0.0f,     0.0f, 1.0f
+};
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [attribs]: Atributos de vertices con coordenadas de textura]
+
+Al añadir un nuevo atributo de vértice, hay que notificar a *OpenGL* del nuevo formato de vértices.
+
+![Figure [res/010_010]: Atributos de vertices con coordenadas de textura](res/010_010.png)
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+// position
+glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), static_cast<void*>(nullptr));
+glEnableVertexAttribArray(0);
+// color
+glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
+glEnableVertexAttribArray(1);
+// text coord
+glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), reinterpret_cast<void*>(6 * sizeof(float)));
+glEnableVertexAttribArray(2);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [attribs]: Atributos de vertices con coordenadas de textura]
+
+Esto ya es común de ejemplos anteriores, hay que cambiar los `strides` de los atributos de posición y color. Y configurar correctamente el nuevo puntero de atributo de coordenada de textura.
+
+También hay que modificar los shaders. El shader de vértices para que redirija el nuevo atributo al shader de fragmentos.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec3 aColor;
+layout (location = 2) in vec2 aTexCoord;
+
+out vec3 myColor;
+out vec2 texCoord;
+
+void main() {
+  gl_Position = vec4(aPos, 1.0);
+  myColor = aColor;
+  texCoord = aTexCoord;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [text_vertex]: Shader de vértices con coordenadas de textura]
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+
+in vec3 myColor;
+in vec2 texCoord;
+
+out vec4 FragColor;
+
+uniform sampler2D texture1;  // texture sampler
+
+void main() {
+  FragColor = texture(texture1, texCoord);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [text_fragment]: Shader de fragmentos sampleando una textura]
+
+El shader de fragmentos debería tener también acceso al objeto de textura. GLSL tiene un tipo de dato propio para objetos de textura llamado `sampler`, que tiene un sufijo para indicar el tipo de textura deseado, `sampler1D`, `sampler2D`, `sampler3D`. Simplemente declarando un `uniform` de tipo `sampler2D` ya se tiene acceso a la textura en el shader.
+
+Para samplear el color de una textura en GLSL se usa la función `texture`, que toma como primer argumento el `sampler` de textura y como segundo la coordenada de textura correspondiente. Entonces, está función samplea el color correspondiente usando los parámetros proporcionados anteriormente. La salida de este shader ahora es el color filtrado de la textura en la coordenada de textura interpolada.
+
+Todo lo que queda es enlazar el objeto textura antes de hacer la llamada de pintado, y automáticamente se asigna la textura al `sampler` del shader de fragmentos.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glBindVertexArray(VAO);
+glBindTexture(GL_TEXTURE_2D, texture);
+glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [bind_texture]: Enlazar textura y pintar con ella]
+
+![Figure [res/010_011]: Resultado del rectángulo con textura](res/010_011.png)
+
+Si el código tal como está ahora no funciona o muestra algo completamente negro puede ser debido a que ciertos drivers siempre requieren asignar una unidad de textura a cada `uniform sampler`, esto se ve en el siguiente apartado.
+
+Por otra parte, es buena práctica que las texturas que se usen en la GPU siempre sean de dimensiones potencia de 2. Esto es así porque se pueden realizar muchas optimizaciones a la hora de recorrerlas o samplearlas por ese hecho. Muchos drivers no permiten trabajar con texturas que no sean potencia de 2. Incluso si se quiere trabajar con una textura que no es potencia de 2, sale a cuenta ampliarla rellenando los espacios en blanco hasta llevarla a potencia de 2, por el incremento en rendimiento que se obtiene.
+
+# Unidades de textura
+
+En el apartado anterior se estaba usando un `uniform sampler2D` sin asignarle ningún valor a través de `glUniform` como sucedía con los `uniforms` anteriores. Usar `glUniform1i` es la manera de asignar una localización a un `sampler` de textura, así se pueden seleccionar varias texturas a la vez en un shader de fragmentos. Esta localización de una textura se suele conocer como unidad de textura. La unidad de textura por defecto para una textura es 0, por eso el ejemplo anterior funcionaba, pero no todos los drivers asignan una unidad de textura por defecto.
+
+El principal propósito de las unidades de textura es permitir usar más de 1 textura en los shaders. Asignando unidades de textura a los `samplers`, se pueden enlazar múltiples texturas a la vez siempre que se active la correspondiente unidad de textura primero. Como en `glBindTexture` se pueden activar unidades de textura usando `glActiveTexture` pasando la unidad de textura que se quiere usar.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glActiveTexture(GL_TEXTURE0);
+glBindTexture(GL_TEXTURE_2D, texture);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [activatE_texture_unit]: Activar unidad de textura y enlazarla]
+
+Tras activar una unidad de textura, cualquier llamada posterior a `glBindTexture` enlazará esa textura a la unidad de textura activa en ese momento. La unidad de textura `GL_TEXTURE0` suele estar siempre activada por defecto.
+
+*OpenGL* debería tener siempre al menos un mínimo de 16 unidades de textura que se pueden activar usando desde `GL_TEXTURE0` hasta `GL_TEXTURE15`. Están definidas en orden, así que se puede llegar a `GL_TEXTURE8`, haciendo `GL_TEXTURE0 + 8`, lo cual es útil a la hora de hacer un bucle sobre varias unidades de textura.
+
+Hay que modificar el shader de fragmentos para aceptar otro sampler.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+
+in vec3 myColor;
+in vec2 texCoord;
+
+out vec4 FragColor;
+
+uniform sampler2D texture1;
+uniform sampler2D texture2;
+
+void main() {
+  FragColor = mix(texture(texture1, texCoord),texture(texture2, texCoord), 0.2);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [fragment_2text]: Shader de fragmentos sampleando dos texturas]
+
+El color final es una combinación de las dos texturas. La función `mix` toma dos valores como entrada e interpola linealmente entre ellos basándose en el tercer argumento. Si el tercer argumento es 0.0 entonces devuelve el valor de la primera entrada, si es 1.0 retorna el valor de la segunda entrada. Un valor de 0.4 devuelve un 60% de la primera entrada y un 40% de la segunda entrada, resultando en una mezcla de las dos texturas.
+
+Ahora hay que cargar y crear otra textura, siguiendo los pasos del apartado anterior, cargarla con `stb_image`, crear otro objeto de textura, configurar los parámetros, subir los datos a la GPU y crear los `mipmaps`.`
+
+Para usar la segunda textura (y la primera) hay que cambiar el procedimiento de pintado para enlazar ambas texturas a sus correspondientes unidades de textura.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+shader.use();
+
+glBindVertexArray(VAO);
+
+glActiveTexture(GL_TEXTURE0);
+glBindTexture(GL_TEXTURE_2D, tex1);
+
+glActiveTexture(GL_TEXTURE1);
+glBindTexture(GL_TEXTURE_2D, tex2);
+
+glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [use_2text]: Usar dos texturas para pintar]
+
+También hay que informar a *OpenGL* de a que unidad de textura pertenece cada `sampler`, seleccionando cada `uniform sampler` usando `glUniform1i`, o mediante la clase `Shader`. Solo hay que hacerlo una vez, así que se puede hacer antes de entrar al main loop. Así se asegura que cada `uniform sampler` corresponde a la unidad de textura correcta.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+shader.set("texture1", 0);
+shader.set("texture2", 1);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [uniforms_2text]: `Uniforms` para los dos `samplers`]
+
+![Figure [res/010_012]: Resultado del rectángulo con dos texturas mezcladas](res/010_012.png)
+
+Puesto que *OpenGL* espera que la coordenada de textura `0.0` en el eje `y` esté en la parte inferior de la imagen, pero todas las imágenes suelen tener el 0 en `y` en la parte superior, cualquier imagen pintada tal cual aparece invertida en el eje `y`. Para solucionar esto hay que indicar a `stb_image` que invierta las imágenes verticalmente antes de cargarlas.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+stbi_set_flip_vertically_on_load(true);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [flip_texture]: Invertir verticalmente las imágenes al cargarlas]
+
+![Figure [res/010_013]: Coordenadas de imagen vs coordenadas de textura](res/010_013.png)
+
+# Ejercicios
+
+- Pintar un quad con la mezcla de una textura con los atributos de color interpolados de cada vértice
+- Sin usar el `flip` de la librería `stb` al leer la textura, implementar el `flip` vertical en el fragment shader directamente (usar una imagen que se vea claramente que está al revés como referencia para verificar que funciona)
+- Pintar el quad con una textura repetida cuatro veces, tileada (no vale editar el png/jpg)
+- Pintar el quad y hacer que las coordenadas de textura hagan zoom sobre una parte de la textura, y usar los métodos de filtrado para ver diferencias
+- Pintar el quad con dos texturas interpoladas, y controlar el valor de la interpolación entre ambas con el teclado
+- Crear una clase textura dentro del motor, que encapsule todas las funcionalidades vistas para las texturas de *OpenGL*
+
+<link rel="stylesheet" href="res/md/viu.css">
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'long'};</script>
+<!-- Markdeep: --><script src="res/md/markdeep.min.js?" charset="utf-8"></script>

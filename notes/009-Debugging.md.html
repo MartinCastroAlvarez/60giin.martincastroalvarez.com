@@ -1,0 +1,333 @@
+<meta charset="utf-8">
+**60GIIN - 009 - Debugging**
+    <small>©2026 VIU - 60GIIN Programación Gráfica - Iván Fuertes</small>
+
+# Introducción
+
+La programación gráfica es divertida, pero también una fuente inagotable de frustración, cuando algo no pinta como debiera o directamente no pinta nada en absoluto, y además sin recibir ningún código de error o una ligera pista del problema. Puesto que la mayor parte de lo que se hace es manipular píxeles puede ser difícil averiguar la causa del error. Depurar este tipo de errores visuales es diferente de la depuración normal de programas en la CPU. No hay consola en la que mostrar texto, no hay puntos de ruptura en el código GLSL y no hay una manera simple de verificar el estado de la GPU en ejecución.
+
+Se van a mostrar algunas técnicas y trucos para poder depurar un programa en *OpenGL*. No es demasiado difícil y realmente vale la pena.
+
+# `glGetError()`
+
+En el momento en que se usa incorrectamente *OpenGL* (como configurar un buffer sin haber enlazado ninguno) se generan una o más marcas de errores por debajo. Se pueden consultar estas marcas usando la función `glGetError` que simplemente verifica esas marcas de error y devuelve un valor de error.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+GLenum glGetError();
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [glGetError]: Función `glGetError`]
+
+Cuando se llama a `glGetError` puede devolver una marca de error o que no hay error. Los códigos de error pueden ser:
+
+Marca | Código | Descripción
+------|:------:|-------------
+GL_NO_ERROR | 0 | No hay ningún error desde la última llamada a `glGetError`
+GL_INVALID_ENUM |  1280 | Un parámetro de enumeración es ilegal
+GL_INVALID_VALUE | 1281 | El valor de un parámetro es ilegal
+GL_INVALID_OPERATION | 1282 | El estado para un comando es ilegal para los parámetros dados
+GL_STACK_OVERFLOW | 1283 | Una operación `push` de la pila provoca un desbordamiento de pila
+GL_STACK_UNDERFLOW | 1284 | Una operación `pop` de la pila ocurre cuando la pila esta en su punto más bajo
+GL_OUT_OF_MEMORY | 1285 | Una asignación de memoria no puede reservar suficiente memoria
+GL_INVALID_FRAMEBUFFER_OPERATION | 1286 | Se intenta leer o escribir en un framebuffer que no está completo
+[Table [error_codes]: Códigos de error de *OpenGL*]
+
+En la propia documentación de *OpenGL* se pueden encontrar los códigos de error que genera una función cuando se usa incorrectamente. Por ejemplo, si se mira la documentación de `glBindTexture` se pueden encontrar los posibles códigos de error que se pueden generar en la sección ['Errors'](http://docs.gl/gl3/glBindTexture).
+
+Cuando una marca de error se levanta, no se informa de ninguna otra marca de error. Es más, cuando se llama a `glGetError` todas las marcas de error anteriores se limpian. Esto significa que si se llama a `glGetError` al final de cada frame y devuelve un error no se puede concluir que ha sido el único error y el origen del mismo puede estar en cualquier parte del frame.
+
+La ventaja de `glGetError` es que es relativamente sencillo precisar donde puede estar un error y validar el uso correcto de *OpenGL*. Tan solo hay que llamar a `glGetError` después de cada llamada a *OpenGL* y rápidamente salta el primer lugar en el que el error se muestra, señalando que la llamada anterior ha sido incorrecta.
+
+Por defecto `glGetError` solo muestra los códigos de error, se suele usar una función helper para imprimir por consola los errores en forma de cadena de texto.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+GLenum glCheckError_(const char *file, int line) {
+    GLenum errorCode;
+    while ((errorCode = glGetError()) != GL_NO_ERROR) {
+        std::string error;
+        switch (errorCode) {
+            case GL_INVALID_ENUM:                  error = "INVALID_ENUM"; break;
+            case GL_INVALID_VALUE:                 error = "INVALID_VALUE"; break;
+            case GL_INVALID_OPERATION:             error = "INVALID_OPERATION"; break;
+            case GL_STACK_OVERFLOW:                error = "STACK_OVERFLOW"; break;
+            case GL_STACK_UNDERFLOW:               error = "STACK_UNDERFLOW"; break;
+            case GL_OUT_OF_MEMORY:                 error = "OUT_OF_MEMORY"; break;
+            case GL_INVALID_FRAMEBUFFER_OPERATION: error = "INVALID_FRAMEBUFFER_OPERATION"; break;
+        }
+        std::cout << error << " | " << file << " (" << line << ")" << std::endl;
+    }
+    return errorCode;
+}
+#define glCheckError() glCheckError_(__FILE__, __LINE__)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [chekError]: Función `glCheckError`]
+
+Se hace uso de las directivas del preprocesador para averiguar el fichero y línea en el que se hace llamada. Luego solo hay que hacer la llamada a la macro después de cada llamada a *OpenGL*. La información que devuelve es bastante simple, pero muchas veces es suficiente para encontrar un error y arreglarlo. El gran inconveniente de esta técnica es que no da demasiada información, pero sobre todo que hay que llenar el código de llamadas a la macro.
+
+# Debug Output
+
+A partir de la versión 4.3 de *OpenGL* se incluyó en el perfil `core` una extensión llamada `debug output`. Así, es el mismo *OpenGL* el que directamente manda un mensaje de error al usuario con muchos más detalles de los que provee `glCheckError`. No solo eso, si no que ayuda a capturar los errores exactamente cuando y donde ocurren usando un depurador.
+
+Puesto que esta funcionalidad está en el perfil `core` desde *OpenGL* 4.3 estará disponible solo en maquinas que ejecuten *OpenGL* 4.3 o superior. Si no está disponible se puede preguntar por la disponibilidad de la extensión `ARB_debug_output` o `AMD_debug_output` al driver y usarla en caso afirmativo.
+
+Habrá que descargar la librería `GLAD` correspondiente a una versión 4.3 `core` o superior. Y recordar en los hints de *GLFW* donde se le especificaba la versión de *OpenGL* indicar el uso de 4.3 o superior.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [gl4.3]: Usar *OpenGL* 4.3]
+
+Para usar este método hay que solicitar a *OpenGL* un contexto de `debug output` en el proceso de inicialización. Para ello solo hay que pasar un `hint` a *GLFW* antes de crear la ventana con `glfwCreateWindow` mediante la siguiente función.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [debug_context]: Solicitar el uso de `debug output`]
+
+Una vez inicializado *GLFW* debería estar disponible un contexto de debug si se está usando *OpenGL* 4.3 o superior, o esperar tener suerte y que el sistema aún pueda solicitar un contexto de debug. De otra manera habrá que pedir el `debug output` usando las extensiones citadas anteriormente.
+
+Usar un contexto de debug en *OpenGL* va a suponer que ciertas operaciones en *OpenGL* se ejecuten más lentamente, así que es buena idea eliminar el `hint` de *GLFW *en compilaciones de producción o `release`.
+
+Para verificar si se ha inicializado con éxito un contexto de debug se le puede preguntar a *OpenGL*, siempre después de haber inicializado *GLAD*.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+GLint flags;
+glGetIntegerv(GL_CONTEXT_FLAGS, &flags);
+if (flags & GL_CONTEXT_FLAG_DEBUG_BIT) {
+    // initialize debug output
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [check_debug_context]: Verificar si se ha conseguido `debug output`]
+
+Para usar este sistema hay que pasar a *OpenGL* un `callback` a una función de registro y en esa función procesar el error de *OpenGL* como se crea oportuno. El prototipo de la función que *OpenGL* espera como `callback` es:
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+void APIENTRY glDebugOutput(GLenum source, GLenum type, unsigned int id, GLenum severity,
+                            GLsizei length, const char *message, const void *userParam);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [proto_debug_context]: Prototipo de la función `callback` de `debug output`]
+
+Cada vez que `debug output` detecta un error en *OpenGL* llamará a esta función `callback` y se puede acceder e imprimir gran cantidad de información sobre el error.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+void APIENTRY glDebugOutput(GLenum source, GLenum type, unsigned int id, GLenum severity,
+                            GLsizei length, const char *message, const void *userParam) {
+    // ignore non-significant error/warning codes
+    if(id == 131169 || id == 131185 || id == 131218 || id == 131204) return;
+
+    std::cout << "---------------" << std::endl;
+    std::cout << "Debug message (" << id << "): " <<  message << std::endl;
+
+    switch (source) {
+        case GL_DEBUG_SOURCE_API:             std::cout << "Source: API"; break;
+        case GL_DEBUG_SOURCE_WINDOW_SYSTEM:   std::cout << "Source: Window System"; break;
+        case GL_DEBUG_SOURCE_SHADER_COMPILER: std::cout << "Source: Shader Compiler"; break;
+        case GL_DEBUG_SOURCE_THIRD_PARTY:     std::cout << "Source: Third Party"; break;
+        case GL_DEBUG_SOURCE_APPLICATION:     std::cout << "Source: Application"; break;
+        case GL_DEBUG_SOURCE_OTHER:           std::cout << "Source: Other"; break;
+    } std::cout << std::endl;
+
+    switch (type) {
+        case GL_DEBUG_TYPE_ERROR:               std::cout << "Type: Error"; break;
+        case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR: std::cout << "Type: Deprecated Behaviour"; break;
+        case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR:  std::cout << "Type: Undefined Behaviour"; break;
+        case GL_DEBUG_TYPE_PORTABILITY:         std::cout << "Type: Portability"; break;
+        case GL_DEBUG_TYPE_PERFORMANCE:         std::cout << "Type: Performance"; break;
+        case GL_DEBUG_TYPE_MARKER:              std::cout << "Type: Marker"; break;
+        case GL_DEBUG_TYPE_PUSH_GROUP:          std::cout << "Type: Push Group"; break;
+        case GL_DEBUG_TYPE_POP_GROUP:           std::cout << "Type: Pop Group"; break;
+        case GL_DEBUG_TYPE_OTHER:               std::cout << "Type: Other"; break;
+    } std::cout << std::endl;
+
+    switch (severity) {
+        case GL_DEBUG_SEVERITY_HIGH:         std::cout << "Severity: high"; break;
+        case GL_DEBUG_SEVERITY_MEDIUM:       std::cout << "Severity: medium"; break;
+        case GL_DEBUG_SEVERITY_LOW:          std::cout << "Severity: low"; break;
+        case GL_DEBUG_SEVERITY_NOTIFICATION: std::cout << "Severity: notification"; break;
+    } std::cout << std::endl;
+    std::cout << std::endl;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [use_debug_context]: Implementacion de una función `callback` de `debug output`]
+
+Se ignoran algunos errores que no son tales, como el `131185`, que se llama cuando los drivers de *NVidia* crean un buffer con éxito. Ahora que ya se tiene la función `callback`, es el momento de registrarla e inicializar `debug output`. Se le dice a *OpenGL* que habilite el `debug output`, y se le indica que se llame de manera síncrona al `callback` en el momento que un error se produce.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+GLint flags;
+glGetIntegerv(GL_CONTEXT_FLAGS, &flags);
+if (flags & GL_CONTEXT_FLAG_DEBUG_BIT) {
+    glEnable(GL_DEBUG_OUTPUT);
+    glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+    glDebugMessageCallback(glDebugOutput, nullptr);
+    glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr, GL_TRUE);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [activate_debug]: Activar la función `callback` de `debug output`]
+
+Con la función `glDebugMessageControl` se pueden filtrar los errores que se quieren recibir. En este caso se ha decidido no filtrar nada, pero si se quisiera solo recibir mensajes desde la API de *OpenGL*, que fueran errores y además graves, se configuraría así:
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glDebugMessageControl(GL_DEBUG_SOURCE_API, GL_DEBUG_TYPE_ERROR, GL_DEBUG_SEVERITY_HIGH,
+                      0, nullptr, GL_TRUE);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [filter_debug]: Filtrar `debug output`]
+
+Un beneficio añadido de este sistema es que se puede averiguar fácilmente la línea exacta donde ha ocurrido un error, poniendo un `breakpoint` en la función `callback` en un error especifico, el debugger capturará el error y a través de la `call stack` se puede ver la función que ha disparado el mensaje de error.
+
+Además de leer mensajes de error, también se pueden enviar mensajes al sistema `debug output` con `glDebugMessageInsert`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glDebugMessageInsert(GL_DEBUG_SOURCE_APPLICATION, GL_DEBUG_TYPE_ERROR, 0,
+                     GL_DEBUG_SEVERITY_MEDIUM, -1, "error message here");
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [send_messages_debug]: Enviar mensajes a `debug output`]
+
+Su utilidad se pone de manifiesto si el código desarrollado se engancha a otra aplicación o código *OpenGL* que hace uso de un contexto de `debug output`.
+
+# Depurando la salida de los Shaders
+
+Por desgracia en GLSL no existe ninguna función del estilo de las anteriores ni la capacidad para depurar el código de un shader y hacer una traza. Cuando se tiene una pantalla en negro o se visualiza algo totalmente incorrecto a menudo es difícil averiguar si hay algo mal en el código del shader. Se pueden conseguir los errores de compilación que detectan los errores sintácticos, pero los semánticos pasan inadvertidos.
+
+Un truco que se suele usar para averiguar que está mal con un shader es evaluar todas las variables relevantes en un shader enviándolas directamente al canal de salida del shader de fragmentos. Pintando directamente las variables de los shaders se puede obtener información revisando el resultado visual. Por ejemplo, si se quiere verificar si un modelo tiene las normales correctas, se pueden pasar las normales (transformadas o no) desde el shader de vértices al shader de fragmentos y se pintan las normales tal cual.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+out vec4 FragColor;
+in vec3 Normal;
+
+void main() {
+    ...
+    FragColor.rgb = Normal;
+    FargColor.a = 1.0f;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [paint_normals]: Shader de fragmentos que pone el color de las normales]
+
+![Figure [res/009_001]: Pintar las normales de un modelo](res/009_001.png)
+
+Se puede observar que las normales parecen estar correctas, puesto que la parte derecha del modelo está coloreada mayormente en rojo (que significaría que las normales apuntan hacia la derecha, la `x` positiva, `RGB = XYZ`) y de manera similar la parte superior está coloreada en verde (`y` positiva).
+
+Esto se puede extender a casi cualquier tipo de variable que haya que probar. Es habitual pintar varias variables o resultados intermedios para ver en que parte del algoritmo las cosas empiezan a verse incorrectas.
+
+# Compilador de referencia
+
+Cada driver de cada GPU tiene sus peculiaridades, por ejemplo, los drivers de *NVidia* suelen ser más laxos y tienden a hacer la vista gorda a algunas restricciones de la especificación, mientras que los drivers de *ATI/AMD* tienden a cumplir estrictamente la especificación de *OpenGL*. El problema puede ser que un shader que funcione en una máquina no lo haga en otra debido a diferencias en los drivers.
+
+A base de experiencia se aprenden las pequeñas diferencias entre los proveedores de GPU, pero si se quiere estar seguro de que el código de un shader se ejecuta en todas las maquinas posibles se puede verificar contra la especificación oficial usando el compilador de referencia de [GLSL](https://www.khronos.org/opengles/sdk/tools/Reference-Compiler/).
+
+Se le pasa como primer argumento el fichero con el código del shader, y se ejecuta. Hay que tener en cuenta que se determina el tipo de shader basándose en la extensión del fichero.
+
+Extensión | Shader
+----------|:------:
+.vert | Vértices
+.frag | Fragmentos
+.geom | Geometría
+.tesc | Tessellation Control
+.tese | Tessellation Evaluation
+.comp | Compute
+[Table [file_ext]: Extensiones de los ficheros de shaders]
+
+Si no hay ningún error el compilador no devuelve nada, pero si encuentra algo que no cumple la especificación devuelve el error correspondiente. Esto no va a mostrar la diferencia entre distintos compiladores de los respectivos drivers, pero ayuda a desarrollar los shaders libres de bugs, y ayuda a verificar el código contra la especificación de *OpenGL*.
+
+# Framebuffers
+
+Otro sistema útil es pintar el contenido de un `framebuffer` en algún área predefinida de la pantalla. Se suelen usar `framebuffers` muy a menudo, y como mucha de su magia sucede por detrás, es difícil averiguar que está pasando con ellos. Mostrar los contenidos de un `framebuffer` permite verificar que las cosas están correctas.
+
+Se puede usar un shader muy sencillo que muestra una textura.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+layout (location = 0) in vec2 position;
+layout (location = 1) in vec2 texCoords;
+
+out vec2 TexCoords;
+
+void main() {
+    gl_Position = vec4(position, 0.0f, 1.0f);
+    TexCoords = texCoords;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [fb_vertex]: Shader de vértices para mostrar un `framebuffer`]
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+out vec4 FragColor;
+in  vec2 TexCoords;
+
+uniform sampler2D fboAttachment;
+
+void main() {
+    FragColor = texture(fboAttachment, TexCoords);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [fb_fragment]: Shader de fragmentos para mostrar un `framebuffer`]
+
+Y se escribe una función helper que muestra una textura en la parte superior derecha de la pantalla.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+void DisplayFramebufferTexture(unsigned int textureID) {
+    if (!notInitialized) {
+        // initialize shader and vao w/ NDC vertex coordinates at top-right of the screen
+    }
+
+    glActiveTexture(GL_TEXTURE0);
+    glUseProgram(shaderDisplayFBOOutput);
+        glBindTexture(GL_TEXTURE_2D, textureID);
+        glBindVertexArray(vaoDebugTexturedRect);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+        glBindVertexArray(0);
+    glUseProgram(0);
+}
+
+MainLoop{
+    ...
+    DisplayFramebufferTexture(fboAttachment0);
+    ...
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [fb_fragment]: Shader de fragmentos para mostrar un `framebuffer`]
+
+![Figure [res/009_002]: Framebuffer en la esquina superior derecha con las normales](res/009_002.png)
+
+# Software externo
+
+Cuando todo esto falla siempre es una opción usar una herramienta de terceros para ayudar en la depuración. Normalmente estas se inyectan dentro de los drivers de *OpenGL* y son capaces de interceptar todas las llamadas a *OpenGL* para proporcionar gran cantidad de información interesante de la aplicación. Estas herramientas pueden ayudar de varias maneras, monitorizando el uso de las funciones de *OpenGL*, identificando cuellos de botella, inspeccionando buffers de memoria y visualizando texturas y `framebuffers`. Cuando se trabaja en código de producción estas herramientas se convierten en imprescindibles.
+
+## RenderDoc
+
+[RenderDoc](https://renderdoc.org/) es una herramienta de depuración open source. Se especifica el ejecutable del cual se quiere capturar y se determina un directorio de trabajo. La aplicación se ejecuta de manera normal, y cuando se quiere inspeccionar un frame en particular hay que dejar que *RenderDoc* capture uno o más frames en el estado actual del ejecutable. Dentro de los frames capturados se puede observar el estado del pipeline, todos los comandos de *OpenGL*, almacenamiento de buffers y las texturas en uso.
+
+![Figure [res/009_003]: RenderDoc](res/009_003.png)
+
+## CodeXL
+
+[CodeXL](https://github.com/GPUOpen-Archive/CodeXL) es una herramienta de depuración que puede funcionar como aplicación autónoma o como plugin para *Visual Studio*. Pese a ser desarrollado por *AMD*, también tiene soporte para *NVidia* e *Intel*, pero sin soporte para *OpenCL*.
+
+![Figure [res/009_004]: CodeXL](res/009_004.png)
+
+## NVidia NSight
+
+[NVidia NSight](https://developer.nvidia.com/nsight-visual-studio-edition) funciona como un plugin para *Visual Studio* o *Eclipse*, proporciona multitud de estadísticas de ejecución sobre el uso de la GPU y el estado en cada frame. En el momento en que se arranca la aplicación desde el IDE usando los comandos de *NSight* esté se ejecuta dentro de la aplicación. Lo que destaca de *NSight* es que pinta una transparencia sobre la aplicación que se puede usar para obtener todo tipo de información en tiempo de ejecución y en un análisis frame a frame.
+
+El único inconveniente es que solo funciona con tarjetas gráficas de *NVidia*, si se usa una tarjeta de este tipo y además *Visual Studio* como IDE de desarrollo, sin duda es una herramienta imprescindible.
+
+![Figure [res/009_005]: NVidia NSight](res/009_005.png)
+
+## apiTrace
+
+[apiTrace](apiTrace) es otra herramienta de depuración open source, y se puede usar para depurar aplicaciones *OpenGL* y *DirectX* sobre Windows y Linux. Primero se ejecuta la aplicación para generar un fichero de log con los datos, y luego este fichero se puede reproducir o explorar con *apiTrace*.
+
+![Figure [res/009_006]: apiTrace](res/009_006.png)
+
+## Otros
+
+- [VOGL](https://github.com/ValveSoftware/vogl)
+- [GLIntercept](https://github.com/dtrebilco/glintercept)
+- [BuGLe](https://www.opengl.org/sdk/tools/BuGLe/)
+- [GLSL Debugger](http://glsl-debugger.github.io/)
+- [Intel GPA](https://www.intel.com/content/www/us/en/developer/tools/graphics-performance-analyzers/overview.html)
+- [Radeon Dev Tool Suite](https://gpuopen.com/introducing-radeon-developer-tool-suite/)
+
+<link rel="stylesheet" href="res/md/viu.css">
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'long'};</script>
+<!-- Markdeep: --><script src="res/md/markdeep.min.js?" charset="utf-8"></script>

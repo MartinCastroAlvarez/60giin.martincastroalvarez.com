@@ -1,0 +1,485 @@
+<meta charset="utf-8">
+**60GIIN - 008 - Shaders**
+    <small>©2026 VIU - 60GIIN Programación Gráfica - Iván Fuertes</small>
+
+# Introducción
+
+Los shaders son pequeños programas que se ejecutan en la GPU y son ejecutados para cada sección específica del pipeline gráfico. Son simplemente programas que transforman datos de entrada en datos de salida, están aislados y no se les permite comunicarse con otros, la única comunicación es mediante la entrada/salida.
+
+# GLSL
+
+Los shaders están escritos en un lenguaje muy parecido a C, *GLSL*, que está creado específicamente para usarlo en gráficos y tiene muchas funciones específicas para manipular vectores y matrices.
+
+Siempre empiezan con una declaración de la versión a la que pertenecen, seguida por una lista de las variables de entrada y salida, uniforms y su función principal `main`. El punto de entrada de cada shader es su función `main`, donde se procesan las variables de entrada y se escriben los resultados en las variables de salida.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version version_number profile
+in type in_variable_name;
+in type in_variable_name;
+
+out type out_variable_name;
+
+uniform type uniform_name;
+
+void main() {
+    // process inputs
+    out_variable_name = data_processed;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [shader_layout]: Estructura típica de un shader]
+
+Cuando es un shader de vértices, cada variable de entrada es un atributo de vértice. Hay un máximo de atributos de vértice limitado por hardware. *OpenGL* garantiza que siempre haya al menos 16 atributos de vértice de 4 componentes cada uno, pero en algunas GPU ese límite puede ser mayor, se obtiene preguntando por `GL_MAX_VERTEX_ATTRIBS`, aunque 16 suele ser más que suficiente.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+int nAttributes;
+glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &nAttributes);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [check_attribs]: Verificar número de atributos de vértice máximos]
+
+## Tipos de datos
+
+Como cualquier lenguaje de programación, *GLSL* tiene tipos de datos para especificar en qué tipo de variable se quiere trabajar. Tiene todos los tipos básicos como C, `int`, `float`, `double`, `uint` y `bool`. Además, tiene dos tipos específicos, vectores y matrices.
+
+## Vectores
+
+Un vector en *GLSL* es un contenedor de 1, 2, 3 o 4 componentes para cada uno de los tipos básicos mencionados. Pueden tener la siguiente forma (n es el número de componentes).
+
+- `vecn`, vector por defecto, de n `floats`
+- `bvecn`, vector de n `bools`
+- `ivecn`, vector de n enteros
+- `uvecn`, vector de n enteros sin signo
+- `dvecn`, vector de n `doubles`
+-
+La mayor parte del tiempo se usan los `vecn` básicos, puesto que los `floats` son suficiente para la mayoría de los casos.
+
+A los componentes de los vectores se puede acceder a través de `vec.x`, donde `x` es el primer componente del vector, se puede usar `.x`, `.y`, `.z` y `.w` para acceder al componente 1, 2, 3 y 4 respectivamente. También se permite el uso de `rgba` para colores y `stpq` para coordenadas de textura, accediendo a los mismos componentes.
+
+El tipo vector permite una selección de componentes muy flexible que se llama *swizzling*, para acceder de manera simultánea a cualquier combinación de componentes. Se puede usar cualquier combinación para crear un nuevo vector (del mismo tipo) siempre que el vector original tenga esos componentes.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+vec2 my_vec;
+vec4 my_2nd_vec = my_vec.xyxx;
+vec3 my_3rd_vec = my_2nd_vec.zyw;
+vec4 my_4th_vec = my_2nd_vec.xxxx + my_3rd_vec.yxzy;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [swizzling]: Swizzling de componentes de vectores]
+
+Se pueden pasar vectores como argumentos a la hora de hacer llamadas a constructores de otros vectores, reduciendo el número de argumentos necesarios.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+vec2 my_vec = vec2(0.5, 0.7);
+vec4 my_2nd_vec = vec4(my_vec, 0.0, 0.0);
+vec4 my_3rd_vec = vec4(my_2nd_vec.xyz, 1.0);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [vec_constructor]: Constructores de vectores]
+
+## Matrices
+
+Una matriz en *GLSL* es un contenedor de `n x m` componentes. Solo pueden ser de dos tipos, `float` o `double` (a partir de *OpenGL* 4.0) y pueden ser cuadradas o no.
+
+- `matnxm`, matriz de `floats` de `n` columnas por `m` filas
+- `matn`, matriz de `floats` cuadrada de `n` columnas por `n` filas
+- `dmatnxm`, matriz de `doubles` de `n` columnas por `m` filas
+- `dmatn`, matriz de `doubles` cuadrada de `n` columnas por `n` filas
+-
+El *swizzling* no funciona con matrices, y el acceso a sus componentes se puede realizar con la sintaxis de acceso a arrays.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+mat3 matrix;
+matrix[1] = vec3(3.0, 3.0, 3.0);  // Llena la segunda columa a 3.0s
+matrix[2][0] = 16.0; // Pone 16.0 en el primer componente de la tercera columna
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [matrices]: Declarar y rellenar matrices]
+
+Hay que tener en cuenta que *OpenGL* trata las matrices column-major, es decir, se rellenan primero las columnas, de manera que los componentes quedan así.
+
+\begin{equation}
+M =
+\begin{bmatrix}
+0 & 3 & 6\\
+1 & 4 & 7\\
+2 & 5 & 8
+\end{bmatrix}
+\end{equation}
+
+Pese a que no se puede hacer *swizzling* directamente, como el primer componente de la matriz devuelve un vector (la columna) se pueden hacer cosas como estas.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+matrix[1].yzx = vec3(3.0, 1.0, 2.0);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [matrices_swizzling]: *Swizzling* sobre columnas de matrices]
+
+Tanto los vectores como las matrices soportan las operaciones matemáticas más comunes (multiplicación por escalares, vector por matriz, matriz por matriz).
+
+## Ins & Outs
+
+*GLSL* define las palabras `in` y `out` específicamente para definir los datos de entrada y salida de los shaders. Cada shader determina sus entradas y salidas, y siempre que haya una variable de salida debe coincidir con una variable de entrada del siguiente shader en el pipeline.
+
+El shader de vértices debe recibir datos de entrada iniciales, de otra manera resultaría inservible, recibe los datos directamente de los datos de vértice. Para definir como los datos de vértice están organizados se especifican las variables de entrada con los metadatos de `location`, para poder configurar la localización de los atributos de vértice en la CPU. Así pues, el shader de vértices requiere una especificación extra de sus variables de entrada para poder enlazarlos con los datos de vértice, `layout (location = 0)`.
+
+Es posible omitir el `layout` con la localización, y preguntar al shader en tiempo de ejecución por las localizaciones de los atributos con `glGetAttribLocation`, pero suele ser más sencillo especificarlo de antemano.
+
+Por otro lado, el shader de fragmentos requiere que haya una variable de salida de tipo `vec4` con la salida del color del píxel, puesto que estos shaders necesitan generar un color final, en caso contrario *OpenGL* pintará el objeto negro (o blanco).
+
+Por lo que, si se necesita mandar datos de un shader a otro, hay que declarar en el primero variables de salida y en el segundo las mismas variables del mismo tipo de entrada. Cuando los nombres y los tipos en los dos shaders coinciden entonces *OpenGL* enlaza esas variables y es posible mandar datos entre shaders, esto se realiza cuando se linkan los shaders en programs.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+# version 330 core
+layout (location = 0) in vec3 aPos;  // input attribute position 0
+
+out vec4 vertexColor;  // color output to the fragment shader
+
+void main() {
+    gl_Position = vec4(aPos, 1.0);
+    vertexColor = vec4(0.0, 0.6, 0.0, 1.0);  // output var to dark-green
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [out_vertex]: Variable `out` de un vertex shader]
+
+En este shader de vértices se declara una variable de salida y se le da un valor fijo con un color verde oscuro.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+# version 330 core
+out vec4 FragColor;
+
+in vec4 vertexColor;  // input variable from the vertex shader
+
+void main() {
+    FragColor = vertexColor;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [in_fragment]: Variable `in` en un fragment shader]
+
+En este shader de fragmento se recoge esa variable como entrada (mismo tipo y nombre) y se dirige directamente al color de salida. Esto pintaría el objeto con un color fijo verde oscuro, y se puede ver el mecanismo de comunicación entre shaders.
+
+## Uniforms
+
+Los uniforms son otra manera de pasar datos de nuestra aplicación en la CPU a los shaders en la GPU. Pero son diferentes a los atributos de vértices. Para empezar, los `uniforms` son globales, significando que los `uniforms` son únicos para cada objeto programa de shaders, y se puede acceder a él desde cualquier shader en cualquier etapa del pipeline dentro del program. Y, además, los `uniforms` mantienen su valor, hasta que se resetean o actualizan con nuevos valores.
+
+Para declarar un `uniform` en *GLSL* se le añade la clave `uniform` a una variable con su tipo y nombre, a partir de ahí se puede usar el `uniform` dentro del shader.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+# version 330 core
+out vec4 FragColor;
+
+uniform vec4 myColor;  // uniform variable
+
+void main() {
+    FragColor = myColor;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [uniform_fragment]: Variable `uniform` en un fragment shader]
+
+En este shader de fragmentos se pone el color de salida tal como llega en el `uniform`. Como los `uniforms` son variables globales se pueden definir en cualquier shader dentro del program, si no se usa en el shader de vértices no hace falta declararlo allí. Si se declara un `uniform` y no se usa en ninguna parte del código GLSL, el compilador eliminará esa variable de la versión compilada.
+
+El `uniform` ahora mismo está vacío, no se le ha dado ningún valor todavía.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glUseProgram(program);
+glBindVertexArray(VAO);
+
+float timeValue = glfwGetTime();
+float colorValue = sin(timeValue) / 2.0f + 0.5f;
+int vertexColorLocation = glGetUniformLocation(program, "myColor");
+glUniform4f(vertexColorLocation, colorValue, 0.0f, 0.0f, 1.0f);
+
+glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_INT, 0);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [set_uniform]: Asignar un `uniform`]
+
+Se usa el `program` con los shaders compilados, se enlaza el `VAO` con el triángulo que se quiere pintar. Primero se calcula un valor de color en función del tiempo que hace que se inicializó la ventana y una función `sin` normalizando el valor entre 0.0 y 1.0. Se le pregunta al `program` la localización del `uniform` `myColor` con `glGetUniformLocation`, con el nombre del `uniform`. Si esa función devuelve `-1` es que no se ha podido encontrar el `uniform`. Y por último con `glUniform4f` se le pasa el valor calculado al `uniform` en la GPU. Preguntar por una localización no requiere tener el programa en uso, mientras que actualizar el valor del mismo sí, puesto que actualiza el valor en el `program` activo en ese momento. Por último, se hace la llamada de pintado, si esto se pone dentro del `main loop`, para cada iteración el `uniform` irá cambiando con cada llamada de pintado y el triángulo cambiará de color en cada llamada.
+
+Puesto que *OpenGL* es una librería C no tiene soporte nativo para hacer sobrecarga de tipos, por eso cada función que puede ser llamada con diferentes tipos se definen nuevas funciones para cada tipo, como en `glUniform`. La función requiere un sufijo definiendo el tipo de datos del `uniform`. Los posibles sufijos suelen ser entre otros:
+
+- `glUniformf`, espera un único `float` como valor
+- `glUniformi`, espera un único entero como valor
+- `glUniformui`, espera un único entero sin signo como valor
+- `glUniform3f`, espera 3 `floats`
+- `glUniformfv`, espera un vector/array de `floats` como valor
+
+Siempre que haya que configurar una opción en *OpenGL* hay que elegir la operación sobrecargada que corresponda con el tipo deseado. En este caso se usan 4 `floats` de manera individual, también se podría haber usado la forma `glUniformfv`.
+
+Los `uniforms` son una herramienta útil para determinar atributos que pueden cambiar en cada iteración de render, o para intercambiar datos entre la aplicación en CPU y los shaders en GPU.
+
+## Atributos
+
+En partes anteriores se ha visto como rellenar un `VBO`, configurar atributos de vértice y guardarlos en un `VAO`, ahora es el momento de añadir datos de color a cada vértice, 3 `floats` con el color por cada vértice.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+float vertices[] = {
+    // positions            // colors
+    0.5f, -0.5f, 0.0f,      1.0f, 0.0f, 0.0f,  // bottom right
+    -0.5f, -0.5f, 0.0f,     0.0f, 1.0f, 0.0f,  // bottom left
+    0.0f, 0.5f, 0.0f,       0.0f, 0.0f, 1.0f   // top
+};
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [triangle_color]: Atributos de posición y color]
+
+Para el primer vértice se le da un color rojo, el segundo verde y el tercero azul. Puesto que ahora hay más datos que mandar al shader de vértices, se ajusta el mismo para recibir el color como dato de entrada de atributo de vértice.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+layout (location = 0) in vec3 aPos;  // position in attribute position 0
+layout (location = 1) in vec3 aColor;  // color in attribute position 1
+
+out vec3 myColor;  // output to the fragment shader
+
+void main() {
+  gl_Position = vec4(aPos, 1.0);
+  myColor = aColor;  // set myColor
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [vertex_color]: Atributos de posición y color en el shader de vértices]
+
+En la posición 1 del `layout` se especifica que se recibe el color como `vec3`, y simplemente se pasa como salida de este shader en la variable de salida `myColor`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+
+in vec3 myColor;
+out vec4 FragColor;
+
+void main() {
+  FragColor = vec4(myColor, 1.0);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [fragment_color]: Variable `in` de color en el shader de fragmentos]
+
+Y se usa tal cual para la variable de salida del shader de fragmentos.
+
+Puesto que se ha añadido otro atributo de vértice y actualizado los datos del `VBO` hay que reconfigurar los punteros de los atributos de vértice. Los datos actualizados en la memoria del `VBO` ahora quedan así:
+
+![Figure [res/008_001]: `VBO` con los nuevos atributos de vértice](res/008_001.png)
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), static_cast<void*>(nullptr));
+  glEnableVertexAttribArray(0);
+
+  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
+  glEnableVertexAttribArray(1);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [vbo_atribs]: Nuevos atributos de vértice en el `VBO`]
+
+En el caso del primer atributo, el de la posición del vértice, el único cambio es que ahora el `stride` es de 6 veces el tamaño de un `float`, es decir, ahora hay 6 `floats` entre cada posición de cada vértice (se han colado 3 `floats` con los datos de color entre cada vértice).
+
+Para el segundo atributo, el del color, el primer parámetro ahora es 1, indicando la posición dentro del `layout` del shader. El segundo parámetro es el número de `floats` que tiene este atributo, es 3 por los 3 componentes de cada color. El tercer parámetro es el tipo de datos, `GL_FLOAT`. El cuarto parámetro es `GL_FALSE`, no se quieren los valores normalizados. El cuarto parámetro es el `stride`, y como en el caso de las posiciones, ahora el salto entre cada color es de 6 elementos, 6 veces el tamaño de un `float`, o 24 `bytes`. Y, por último, se indica el `offset` inicial para encontrar el primer color, que, en este caso, puesto que las posiciones están delante de los colores, es de 3 elementos, 3 veces el tamaño de un `float`, o 12 `bytes`.
+
+![Figure [res/008_002]: El triángulo con atributos de color por vértice](res/008_002.png)
+
+En la imagen se puede ver el resultado de poner los atributos de color a cada vértice. Y se puede apreciar el efecto de la interpolación de fragmentos. Cuando se pinta un triángulo, la etapa de rasterización normalmente resulta en muchos más fragmentos que los vértices originalmente especificados. Entonces, el rasterizador determina las posiciones de cada uno de esos fragmentos basándose en donde se encuentran dentro de la forma del triángulo. Basándose en esas posiciones, interpola todas las variables de entrada del shader de fragmentos. Si se mira una arista del triángulo, en un extremo está un vértice de color azul, y en el otro un vértice de color verde, si el shader de fragmento se ejecuta para un fragmento que se encuentra al 70% de la línea, entonces el color que le llega a la variable de entrada es una combinación lineal entre azul y verde, 30% de azul y 70% de verde. Esto es lo que ha pasado con este triángulo, había 3 vértices, cada uno con un color, y dentro del triángulo varios miles de fragmentos, donde el shader de fragmentos ha interpolado los colores de cada vértice según la influencia de cada vértice en cada píxel. La interpolación de fragmentos se aplica a todas las variables de entrada del shader de fragmentos.
+
+# Clase Shader
+
+Viendo los últimos ejemplos, empiezan a aparecer ciertas abstracciones que se pueden aplicar y hacer la vida del desarrollador más fácil. Una de las más obvias es la clase shader. Que aglutine todas las tareas repetitivas sobre los shaders, como la compilación, linkado, activación, búsqueda y actualización de `uniforms`,...
+
+Se crea la clase shader en un fichero de cabeceras y se define la estructura de la clase.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#include <glm/glm.hpp>
+
+#include <string>
+
+class Shader {
+    public:
+
+        enum class Type {
+            Vertex = 0,
+            Fragment = 1,
+            Geometry = 2,
+            Program = 3,
+        };
+
+        Shader() = delete;
+        Shader(const char* vertexPath, const char* fragmentPath,
+            const char* geometryPath = nullptr);
+        ~Shader();
+
+        Shader(const Shader&) = default;
+        Shader(Shader&&) = default;
+        Shader& operator=(const Shader&) = default;
+        Shader& operator=(Shader&&) = default;
+
+        void use() const;
+
+        void set(const char* name, bool value) const;
+        void set(const char* name, int value) const;
+        void set(const char* name, float value) const;
+        void set(const char* name, float value1, float value2) const;
+        void set(const char* name, float value1, float value2, float value3) const;
+        void set(const char* name, float value1, float value2, float value3, float value4) const;
+        void set(const char* name, const glm::vec2& value) const;
+        void set(const char* name, const glm::vec3& value) const;
+        void set(const char* name, const glm::vec4& value) const;
+        void set(const char* name, const glm::mat2& value) const;
+        void set(const char* name, const glm::mat3& value) const;
+        void set(const char* name, const glm::mat4& value) const;
+    private:
+        static void checkErrors(uint32_t shader, Type type);
+        static void loadShader(const char* path, std::string* code);
+
+        uint32_t _id;
+};
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [shader_header]: `Header` de la clase `Shader`]
+
+Se necesitarán funciones para crear un shader a partir de las rutas donde se encuentra el código fuente de los diferentes shaders, para activarlo y usarlo y para dar valor a los diferentes tipos de `uniforms`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+void Shader::loadShader(const char* path, std::string* code) {
+    std::ifstream file;
+
+    file.open(path, std::ios_base::in);
+    if (file) {
+        std::stringstream stream;
+        stream << file.rdbuf();
+        *code = stream.str();
+    } else {
+        std::cout << "Error Loading Shader " << path << std::endl;
+    }
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [load_shader]: Cargar un fichero de disco]
+
+La primera función que implementar es la que será capaz de leer un fichero desde disco y cargue el contenido del código fuente en una cadena de texto. Será una función privada que solo se llamará desde la propia clase `Shader`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+Shader::Shader(const char* vertexPath, const char* fragmentPath,
+    const char* geometryPath) {
+
+    std::string sVertexCode, sFragmentCode, sGeometryCode;
+    loadShader(vertexPath, &sVertexCode);
+    loadShader(fragmentPath, &sFragmentCode);
+    if (geometryPath) {
+        loadShader(geometryPath, &sGeometryCode);
+    }
+
+    const char* vertexCode = sVertexCode.c_str();
+    const char* fragmentCode = sFragmentCode.c_str();
+
+    const uint32_t vertex = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vertex, 1, &vertexCode, nullptr);
+    glCompileShader(vertex);
+    checkErrors(vertex, Type::Vertex);
+
+    const uint32_t fragment = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fragment, 1, &fragmentCode, nullptr);
+    glCompileShader(fragment);
+    checkErrors(fragment, Type::Fragment);
+
+    uint32_t geometry = 0;
+    if (geometryPath) {
+        const char* geometryCode = sGeometryCode.c_str();
+        geometry = glCreateShader(GL_GEOMETRY_SHADER);
+        glShaderSource(geometry, 1, &geometryCode, nullptr);
+        glCompileShader(geometry);
+        checkErrors(geometry, Type::Geometry);
+    }
+
+    _id = glCreateProgram();
+    glAttachShader(_id, vertex);
+    glAttachShader(_id, fragment);
+    if (geometryPath) {
+        glAttachShader(_id, geometry);
+    }
+    glLinkProgram(_id);
+    checkErrors(_id, Type::Program);
+
+    glDeleteShader(vertex);
+    glDeleteShader(fragment);
+    if (geometryPath) {
+        glDeleteShader(geometry);
+    }
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [constructor_shader]: Constructor de la clase `Shader`]
+
+Se usará un constructor que recibirá las rutas de los ficheros de texto con el código fuente del shader de vértices y el de fragmentos (y opcionalmente el de geometría), usando la función anterior los cargará desde disco, y luego realizará el proceso ya conocido de compilación y linkado.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+void Shader::checkErrors(const uint32_t shader, const Type type) {
+    int success;
+    char log[512];
+    if (type != Type::Program) {
+        glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+        if (!success) {
+            glGetShaderInfoLog(shader, 512, nullptr, log);
+            std::cout << "Error Compiling Shader " <<
+                (type == Type::Vertex ? "Vertex " : "Fragment ") << log << std::endl;
+        }
+    } else {
+        glGetProgramiv(shader, GL_LINK_STATUS, &success);
+        if (!success) {
+            glGetProgramInfoLog(shader, 512, nullptr, log);
+            std::cout << "Error Linking Program " << log << std::endl;
+        }
+    }
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [check_shader]: Verificar el estado de un shader]
+
+También está el método para verificar errores ya visto anteriormente.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+Shader::~Shader() {
+    glDeleteProgram(_id);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [delete_shader]: Destructor del `program`]
+
+En el destructor de la clase se elimina el `program` de la GPU.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+void Shader::use() const {
+    glUseProgram(_id);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [use_shader]: Usar el `program`]
+
+Y para usarlo cuando se necesite pintar con este `program` se puede hacer uso del método `use` que hace lo habitual.
+
+Y por último diversos métodos sobrecargados para subir datos a los `uniforms`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+void Shader::set(const char* name, const float value1, const float value2,
+    const float value3, const float value4) const {
+    glUniform4f(glGetUniformLocation(_id, name), value1, value2, value3, value4);
+}
+
+void Shader::set(const char* name, const glm::vec4& value) const {
+    glUniform4fv(glGetUniformLocation(_id, name), 1, glm::value_ptr(value));
+}
+
+void Shader::set(const char* name, const glm::mat4& value) const {
+    glUniformMatrix4fv(glGetUniformLocation(_id, name), 1, GL_FALSE,
+        glm::value_ptr(value));
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [uniform_shader]: Enviar `uniforms`]
+
+Ahora que se tiene una clase `Shader` completa, usarla es trivial, se crea un objeto `Shader` una sola vez y desde ese punto se puede usar para activarlo y subir datos a los `uniforms`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+const Shader shader("../vertex.vert", "../fragment.frag");
+
+...
+
+MainLoop{
+    shader.use();
+    shader.set("myColor", 0.0f, 1.0f, 0.0f, 1.0f);
+    render();
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [use_class_shader]: Usar clase `Shader`]
+
+Los ficheros con las fuentes de los shaders se han guardado en dos ficheros separados dentro de la carpeta `shaders` en la raíz del proyecto, las extensiones más aceptadas para los shaders son `.vert` para el shader de vértices y `.frag` para el shader de fragmentos.
+
+# Ejercicios
+
+- Dibujar el triángulo boca abajo, usando los vértices de los ejemplos anteriores, tocando solo el shader de vértices
+- Cambiar el color del triángulo con el paso del tiempo, usando un uniform para ello y la función `glfwGetTime()`, que mide el tiempo que ha transcurrido desde que se inició GLFW
+- Mover el triángulo a lo largo de la pantalla con el paso del tiempo, usando un `uniform` para ello
+- Pasar la posición del vértice al shader de fragmentos y pintar ese valor y entender el significado y como se interpola
+
+<link rel="stylesheet" href="res/md/viu.css">
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'long'};</script>
+<!-- Markdeep: --><script src="res/md/markdeep.min.js?" charset="utf-8"></script>
