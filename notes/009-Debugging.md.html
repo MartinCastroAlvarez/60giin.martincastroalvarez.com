@@ -213,7 +213,7 @@ Esto se puede extender a casi cualquier tipo de variable que haya que probar. Es
 
 Cada driver de cada GPU tiene sus peculiaridades, por ejemplo, los drivers de *NVidia* suelen ser más laxos y tienden a hacer la vista gorda a algunas restricciones de la especificación, mientras que los drivers de *ATI/AMD* tienden a cumplir estrictamente la especificación de *OpenGL*. El problema puede ser que un shader que funcione en una máquina no lo haga en otra debido a diferencias en los drivers.
 
-A base de experiencia se aprenden las pequeñas diferencias entre los proveedores de GPU, pero si se quiere estar seguro de que el código de un shader se ejecuta en todas las maquinas posibles se puede verificar contra la especificación oficial usando el compilador de referencia de [GLSL](https://www.khronos.org/opengles/sdk/tools/Reference-Compiler/).
+A base de experiencia se aprenden las pequeñas diferencias entre los proveedores de GPU, pero si se quiere estar seguro de que el código de un shader se ejecuta en todas las maquinas posibles se puede verificar contra la especificación oficial usando el compilador de referencia de [GLSL](https://www.khronos.org/opengles/sdk/Reference-Compiler/).
 
 Se le pasa como primer argumento el fichero con el código del shader, y se ejecuta. Hay que tener en cuenta que se determina el tipo de shader basándose en la extensión del fichero.
 
@@ -315,7 +315,7 @@ El único inconveniente es que solo funciona con tarjetas gráficas de *NVidia*,
 
 ## apiTrace
 
-[apiTrace](apiTrace) es otra herramienta de depuración open source, y se puede usar para depurar aplicaciones *OpenGL* y *DirectX* sobre Windows y Linux. Primero se ejecuta la aplicación para generar un fichero de log con los datos, y luego este fichero se puede reproducir o explorar con *apiTrace*.
+[apiTrace](https://apitrace.github.io/) es otra herramienta de depuración open source, y se puede usar para depurar aplicaciones *OpenGL* y *DirectX* sobre Windows y Linux. Primero se ejecuta la aplicación para generar un fichero de log con los datos, y luego este fichero se puede reproducir o explorar con *apiTrace*.
 
 ![Figure [res/009_006]: apiTrace](res/009_006.png)
 
