@@ -4,4 +4,5 @@ set(PROJECT_LIST
     02_Tri
     03_Tri_W
     04_Color_Tri
+    05_Text
     )
