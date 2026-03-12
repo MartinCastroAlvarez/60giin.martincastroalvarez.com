@@ -1,0 +1,302 @@
+<meta charset="utf-8">
+**60GIIN - 011 - Transformaciones 3D**
+    <small>©2026 VIU - 60GIIN Programación Gráfica - Iván Fuertes</small>
+
+# Introducción
+
+En apartados anteriores se ha hablado acerca de las transformaciones a través de la multiplicación de matrices de transformación, ahora se va a ver su aplicación práctica.
+
+Partiendo del ejemplo anterior, pintando un rectángulo con dos texturas. Se va a crear una matriz de transformación para rotar el rectángulo 90 grados en sentido contrario a las agujas del reloj, y luego escalarlo a la mitad de su tamaño.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [include_glm]: Incluir cabeceras de *GLM*]
+
+Se incluyen las tres cabeceras que se necesitan de *GLM* (librería matemática).
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glm::mat4 trans = glm::mat4(1.0f);
+trans = glm::rotate(trans, glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+trans = glm::scale(trans, glm::vec3(0.5f, 0.5f, 0.5f));
+shader.set("transform", trans);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [transform]: Crear matrix de transformación con rotación y escalado]
+
+Justo antes de llamar a la función de pintado en el `main loop`, se crea una matriz cuadrada de `4x4`, se carga inicialmente la matriz identidad en ella.
+
+Luego se rota con la función `rotate` de *GLM*, que toma como primer parámetro la matriz a rotar, como segundo argumento el ángulo a rotar (en radianes), y como último parámetro el eje sobre el que efectuar la rotación, en este caso sobre el eje `z` (recordar que *OpenGL* funciona como un sistema de mano derecha, donde la `z` positiva sale desde la pantalla).
+
+Por último, se escala mediante la función `scale` de *GLM*, que toma la matriz original como primer argumento y a continuación el factor de escala en cada uno de los tres ejes, en este caso `0.5`, puesto que se va a escalar a la mitad.
+
+\begin{equation}
+\vec{v^1}=S_{4x4} \cdot R_{4x4} \cdot T_{4x4} \cdot \vec{v}_{4x1}
+\end{equation}
+
+Recordando que el orden en el que se aplican las transformaciones a un vector es por la derecha, el orden correcto para crear una matriz de transformación, es primero aplicar la traslación, luego la rotación, y por último el escalado. Es decir, se crea la matriz TRS, Traslada, Rota y eScala.
+
+Por último, se le hace llegar esta matriz de transformación con la rotación y escalado concatenados al shader. El cual hay que modificar para soportarlo.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec3 aColor;
+layout (location = 2) in vec2 aTexCoord;
+
+out vec3 myColor;
+out vec2 texCoord;
+
+uniform mat4 transform;
+
+void main() {
+  gl_Position = transform * vec4(aPos, 1.0);
+  myColor = aColor;
+  texCoord = aTexCoord;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [vertex_transform]: Shader de vértices aplicando la matrix de transformación]
+
+El shader de vértices es idéntico al anterior, salvo que ahora se multiplica el atributo de posición por la matriz de transformación que se recibe como `uniform` antes de dejarlo en la variable de salida `gl_Position`. Cuidado con el orden de la operación, como se vio en su momento, es relevante puesto que no es conmutativa. Esto hace que los vértices que recibe el shader sean transformados y roten 90 grados primero y se escalen después.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+trans = glm::rotate(trans, (float)glfwGetTime(), glm::vec3(0.0f, 0.0f, 1.0f));
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [rotate_time]: Aplicar una rotación en función del tiempo]
+
+Si el ángulo de la rotación se hace dependiente del tiempo, entonces el cuadrado toma vida y va girando sobre sí mismo. Demostrando así la utilidad de las transformaciones para dar vida a los objetos. Usar transformaciones de esta manera ahorra el esfuerzo de tener que redefinir los datos de vértice y ahorra mucho tiempo de procesado, puesto que no hay que reenviar los datos de vértice cada vez a la GPU.
+
+![Figure [res/011_001]: Resultado del rectángulo con el mix de dos texturas rotando y escalado](res/011_001.png)
+
+# Model + View + Projection = MVP
+
+Hasta ahora se ha visto como trabajar con objetos en 2D, ahora que se ha visto el uso de las transformaciones es hora de empezar a llevar ese conocimiento a la tercera dimensión.
+
+Como se ha visto en la sección sobre los distintos espacios de coordenadas, primero se necesita una transformación que lleve los vértices del modelo del espacio local al espacio de mundo. Esto se suele llamar matriz `model`. Como cualquier otra matriz de transformación es una concatenación de traslaciones, escalados y/o rotaciones, que se aplicará a los vértices de un objeto para llevarlos al espacio de mundo.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glm::mat4 model = glm::mat4(1.0f);
+model = glm::rotate(model, glm::radians(-55.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [model_matrix]: Matriz `model`]
+
+Se hace uso de *GLM* para crear una matriz de transformación `model` que rote respecto del eje `x` para que parezca que el rectángulo esté sobre el suelo. Multiplicando los vértices del rectángulo con esta matriz se están llevando las coordenadas del espacio local al espacio de mundo, es decir, se está colocando al objeto en su espacio respecto del mundo virtual.
+
+El siguiente paso es transformar de espacio de mundo a espacio de vista, y para eso se necesitará otra matriz, llamada normalmente matriz `view`. En este caso se quiere que la escena se mueva ligeramente hacia atrás para hacer más visible al objeto (estando en espacio de mundo se está situado en el origen `(0, 0, 0)`). Mover la cámara hacia atrás para conseguir el efecto deseado es lo mismo que mover todo el mundo hacia delante, y eso es lo que hace una matriz `view`. Mover el mundo de manera inversa a como se quiere que se mueva la cámara. Puesto que *OpenGL* es un sistema de mano derecha, se quiere mover la cámara en el eje `z`, hacia posiciones positivas, con lo cual hay que crear una matriz `view` que haga lo contrario, que mueva el mundo en `z`´s negativas. Eso da la impresión de que se mueve hacia atrás.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glm::mat4 view = glm::mat4(1.0f);
+view = glm::translate(view, glm::vec3(0.0f, 0.0f, -3.0f));
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [view_matrix]: Matriz `view`]
+
+Se crea una matriz de transformación `view`, que traslada 3 unidades negativas en el eje `z`.
+
+El último paso es pasar de espacio de vista a espacio de clip, para eso se usará una última matriz, llamada matriz de proyección. Como se ha visto en secciones anteriores, existen dos tipos de proyección habituales, ortográfica y perspectiva, ambas tienen una manera sencilla de crearse desde *GLM*.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+const glm::mat4 proj = glm::ortho(0,0f, width, 0.0f, height, near, far);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [ortho_projection_matrix]: Matriz `projection` ortográfica]
+
+Esto creará una matriz de proyección ortográfica, el primer y segundo parámetro son la posición inicial del eje horizontal y el ancho de pantalla, tercer y cuarto, la posición inicial en eje vertical y alto de pantalla, y quinto y sexto, `near` y `far` respectivamente.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+const glm::mat4 proj = glm::perspective(glm::radians(fov), (float)width/(float)height, near, far);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [persp_projection_matrix]: Matriz `projection` perspectiva]
+
+Esto creará una matriz de proyección perspectiva, primer parámetro es el `fov` (field of view) de la cámara (habitualmente a 45 grados), segundo parámetro el `aspect ratio` (ancho dividido por alto) y tercer y cuarto, `near` y `far`.
+
+Para el ejemplo, se usará una proyección perspectiva, con 45 grados de `fov`, el `aspect ratio` correcto, un near de `0.1` y un far de `100`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+const glm::mat4 proj = glm::perspective(glm::radians(45.0f), 800.0f / 600.0f, 0.1f, 100.0f);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [persp_projection_matrix2]: Matriz `projection` perspectiva]
+
+Y se suben las tres matrices como `uniforms` a los shaders.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+shader.set("model", model);
+shader.set("view", view);
+shader.set("proj", proj);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [uniform_matrix]: Subir matrices como `uniforms` a los shaders]
+
+Y por último se modifica el shader de vértices para hacer uso de estos tres nuevos `uniforms`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec2 aColor;
+layout (location = 2) in vec2 aUv;
+
+out vec2 uv;
+out vec3 myColor;
+
+uniform mat4 model;
+uniform mat4 view;
+uniform mat4 proj;
+
+void main() {
+  gl_Position = proj * view * model * vec4(aPos, 1.0);
+  uv = aUv;
+  myColor = aColor;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [shader_matrix]: Shader de vértices con las tres matrices de transformación]
+
+Se declaran los tres `uniforms` como matrices cuadradas de 4 componentes y se multiplican por la posición del vértice antes de pasarlo a `gl_Position`. Hay que tener cuidado con el orden en que se multiplican las matrices, se hace de derecha a izquierda, porque primero se quiere aplicar la `model`, luego la `view` y por último la `projection`.
+
+![Figure [res/011_002]: Resultado del rectángulo con el mix de dos texturas en perspectiva](res/011_002.png)
+
+Se aprecia que el rectángulo ahora está apoyado en el suelo, un poco alejado de la cámara y pintado con perspectiva (los puntos más alejados se ven más pequeños).
+
+# Cubo
+
+El objeto 3D más sencillo es un cubo. Para pintar un cubo se necesitan 8 vértices y pintar 12 triángulos (2 por cara). Pero como se va a hacer uso de las coordenadas de textura para mapear una textura sobre el cubo, y se quiere que cada cara pueda tener unas coordenadas de textura distintas se va a usar una geometría extendida, es decir se van a tener 4 vértices por cara, cada uno con su coordenada de textura, aunque muchas posiciones de los vértices estén repetidas, en esos casos las coordenadas de textura serán distintas.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+float vertices[] = {
+    // Position                  // UVs
+    -0.5f, -0.5f, 0.5f,     0.0f, 0.0f, //Front
+    0.5f,  -0.5f, 0.5f,     1.0f, 0.0f,
+    0.5f,  0.5f,  0.5f,     1.0f, 1.0f,
+    -0.5f, 0.5f,  0.5f,     0.0f, 1.0f,
+    0.5f,  -0.5f, 0.5f,     0.0f, 0.0f, //Right
+    0.5f,  -0.5f, -0.5f,    1.0f, 0.0f,
+    0.5f,  0.5f,  -0.5f,    1.0f, 1.0f,
+    0.5f,  0.5f,  0.5f,     0.0f, 1.0f,
+    -0.5f, -0.5f, -0.5f,    1.0f, 0.0f, //Back
+    -0.5f, 0.5f,  -0.5f,    1.0f, 1.0f,
+    0.5f,  0.5f,  -0.5f,    0.0f, 1.0f,
+    0.5f,  -0.5f, -0.5f,    0.0f, 0.0f,
+    -0.5f, -0.5f, 0.5f,     1.0f, 0.0f, //Left
+    -0.5f, 0.5f,  0.5f,     1.0f, 1.0f,
+    -0.5f, 0.5f,  -0.5f,    0.0f, 1.0f,
+    -0.5f, -0.5f, -0.5f,    0.0f, 0.0f,
+    -0.5f, -0.5f, 0.5f,     0.0f, 1.0f, //Bottom
+    -0.5f, -0.5f, -0.5f,    0.0f, 0.0f,
+    0.5f,  -0.5f, -0.5f,    1.0f, 0.0f,
+    0.5f,  -0.5f, 0.5f,     1.0f, 1.0f,
+    -0.5f, 0.5f,  0.5f,     0.0f, 0.0f, //Top
+    0.5f,  0.5f,  0.5f,     1.0f, 0.0f,
+    0.5f,  0.5f,  -0.5f,    1.0f, 1.0f,
+    -0.5f, 0.5f,  -0.5f,    0.0f, 1.0f
+};
+
+uint32_t indices[] = {
+    0, 1, 2,      0, 2, 3,    //Front
+    4, 5, 6,      4, 6, 7,    //Right
+    8, 9, 10,     8, 10, 11,  //Back
+    12, 13, 14,   12, 14, 15, //Left
+    16, 17, 18,   16, 18, 19, //Bottom
+    20, 21, 22,   20, 22, 23  //Top
+};
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [cube_vertex]: Vértices de un cubo, con sus coordenadas de textura e índices]
+
+Estos son las posiciones para cada vértice con sus uvs correspondientes y los elementos que los relacionan para formar los 12 triángulos.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glm::mat4 model = glm::mat4(1.0f);
+model = glm::rotate(model, (float)glfwGetTime() * glm::radians(50.0f), glm::vec3(0.5f, 1.0f, 0.0f));
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [model_matrix_time]: Matriz `model` rotando con el tiempo]
+
+La matriz model varia con el tiempo para ver al cubo rotar. Hay que tener cuidado al subir los datos de los vértices al `VBO` y al hacer la llamada de pintado, puesto que ahora hay que pintar 36 elementos (12 tris * 3 posiciones).
+
+![Figure [res/011_003]: El cubo rotando en 3D](res/011_003.png)
+
+# Buffer de profundidad
+
+Si se deshabilita el `culling` en el ejemplo anterior se puede apreciar un resultado extraño, algunos lados del cubo se pintan sobre otros lados. Esto sucede porque *OpenGL* pinta triángulo a triángulo, y sobrescribe los píxeles aunque se haya pintado algo en ese mismo píxel antes. Por eso algunos triángulos se sobreponen sobre otros, aunque se supone que no se deban superponer.
+
+Para evitar este tipo de problemas (y otros usos más avanzados) *OpenGL* almacena la información de profundidad de cada fragmento en un buffer especial llamado buffer de profundidad o `z-buffer`, que permite a *OpenGL* decidir cuándo pintar sobre un píxel o no basándose en su profundidad (distancia respecto de la cámara).
+
+Este buffer se crea automáticamente por *GLFW* (igual que se crea el buffer de color que almacena los colores de la imagen final). La profundidad es almacenada para cada fragmento (el valor de `z`) y cada vez que un fragmento intenta dar salida a su color, *OpenGL* compara su valor de profundidad con el fragmento que está pintado previamente y su profundidad, si el nuevo fragmento está por delante entonces se pinta, en caso contrario se descarta. Este proceso se llama test de profundidad y lo hace *OpenGL* de manera automática.
+
+Solo hay que informar a *OpenGL* que se quiere hacer uso de él (esta deshabilitado por defecto) habilitándolo mediante `glEnable`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glEnable(GL_DEPTH_TEST);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [depth_test_enable]: Habilitar el test de profundidad]
+
+Y puesto que se está usando el buffer de profundidad también hay que limpiarlo antes de cada iteración de pintado, tal como se borraba el buffer de color con `glClear`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [depth_buffer_clear]: Borrar el buffer de color y el de profundidad]
+
+También se puede indicar como debe funcionar ese test de profundidad con la función `glDepthFunc`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glDepthFunc(GL_LESS);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [depth_func]: Función que se aplica en el test de profundidad]
+
+Lo habitual es usar `GL_LESS`, pero hay más opciones en función de cómo se deben comparar los valores de profundidad de los fragmentos nuevos respecto de los ya pintados, es decir, compara valores de `z`.
+
+- `GL_NEVER`, nunca pasa el test
+- `GL_LESS`, por defecto, pasa si el nuevo es menor que el viejo
+- `GL_EQUAL`, pasa si el nuevo es igual al viejo
+- `GL_LEQUAL`, pasa si el nuevo es menor o igual que el viejo
+- `GL_GREATER`, pasa si el nuevo es mayor que el viejo
+- `GL_NOTEQUAL`, pasa si el nuevo no es igual que el viejo
+- `GL_GEQUAL`, pasa si el nuevo es mayor o igual que el viejo
+- `GL_ALWAYS`, siempre pasa
+
+![Figure [res/011_004]: El cubo rotando en 3D](res/011_004.png)
+
+# Cubos
+
+Si se quisiera pintar más de un cubo, ya que la geometría es idéntica, se podría hacer de una manera muy sencilla, hacer tantas llamadas de pintado como cubos se quisieran pintar y cambiar la matriz `model` en cada llamada para situar cada cubo en un sitio distinto dentro del mundo.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+std::vector<glm::vec3> cubePositions{
+  glm::vec3(0.0f, 0.0f,0.0f),
+  glm::vec3(1.0f, 6.0f, -20.0f),
+  glm::vec3(-2.0f, -2.0f,-2.0f),
+  glm::vec3(-4.0f, -6.0f,-10.0f),
+  glm::vec3(3.0f, -1.0f,-4.0f),
+  glm::vec3(-2.0f, 3.0f,-8.0f),
+  glm::vec3(2.0f, -2.0f,-3.0f),
+  glm::vec3(1.0f, 2.0f,-2.0f),
+  glm::vec3(1.0f, 0.0f,-2.0f),
+  glm::vec3(-1.0f, 1.0f,-1.0f)
+};
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [cubes]: Posiciones de varios cubos]
+
+Se guarda la posición de cada cubo en un vector. Y la llamada a pintar se hace dentro de un bucle, y antes de hacerla se cambia la matriz `model` para ubicar cada cubo en su posición.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+  for (size_t i = 0; i < cubePositions.size(); ++i) {
+    glm::mat4 model = glm::mat4(1.0f);
+    model = glm::translate(model, cubePositions[i]);
+    const float angle = 10.0f + (20.0f * static_cast<float>(i));
+    model = glm::rotate(model, static_cast<float>(glfwGetTime()) * glm::radians(angle), glm::vec3(0.5f, 1.0f, 0.0f));
+
+    shader.set("model", model);
+
+    glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+  }
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [cubes_render]: Pintar varios cubos]
+
+![Figure [res/011_005]: Los 10 cubos rotando en 3D](res/011_005.png)
+
+# Ejercicios
+
+- Generar un cubo de manera procedural, a partir de un centro y un radio
+- Cambiar las UVs del cubo, para soportar el unwrapping completo, y pintar el cubo con la textura en "assets/textures/cube_uv.jpg"
+- En la escena con los cubos rotando, invertir el orden de la aplicación de las transformaciones (traslación y rotación) y verificar que el orden de aplicación es relevante
+- Crear una escena con un suelo, y varios cubos apoyados en él, a diversas alturas, distancias y tamaños.
+
+<link rel="stylesheet" href="res/md/viu.css">
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'long'};</script>
+<!-- Markdeep: --><script src="res/md/markdeep.min.js?" charset="utf-8"></script>

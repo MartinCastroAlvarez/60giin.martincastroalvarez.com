@@ -1,0 +1,395 @@
+<meta charset="utf-8">
+**60GIIN - 012 - Cámara**
+    <small>©2026 VIU - 60GIIN Programación Gráfica - Iván Fuertes</small>
+
+# Introducción
+
+Como se veía en el apartado anterior, *OpenGL* no tiene el concepto de cámara, se simula usando una matriz `view` que mueve los objetos en la dirección inversa, creando la ilusión de que la cámara se mueve.
+
+# Espacio de cámara
+
+Cuando se habla de espacio de cámara o vista, se habla de todas las coordenadas de los vértices vistas desde la perspectiva de la cámara como origen de la escena, la matriz `view` transforma todas las coordenadas de mundo a coordenadas de vista que son relativas a la posición y dirección de la cámara. Para definir una cámara se necesita su posición en el espacio de mundo, la dirección hacia donde está mirando, un vector apuntando a su derecha y un vector apuntando hacia arriba desde la cámara. Se está creando un sistema de coordenadas con 3 ejes perpendiculares con la posición de la cámara como origen.
+
+![Figure [res/012_001]: Posición y 3 ejes de una cámara](res/012_001.png)
+
+## Posición de la cámara
+
+Conseguir la posición de una cámara es sencillo, es un vector que guarda la posición de la cámara en espacio de mundo, como en ejemplos anteriores la situamos en la posición 3 en el eje `z`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 3.0f);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [cameraPos]: Posición de la cámara en espacio de mundo]
+
+## Dirección de la cámara
+
+El siguiente vector que se necesita es la dirección de la cámara, es decir, hacia donde está mirando. Por ahora estará mirando hacia el centro del mundo `(0, 0, 0)`. Si se restan dos puntos se obtiene un vector determinando la dirección que definen estos dos puntos. Por lo tanto, si se resta la posición de la cámara al punto al que está mirando se obtiene el vector dirección. Puesto que la cámara apunta hacia las `z`´s negativas se quiere que el vector dirección apunte hacia las `z`´s positivas. Con lo cual, hay que invertir el orden de la resta, para obtener el vector apuntando hacia las `z`´s positivas de la cámara.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glm::vec3 cameraTarget = glm::vec3(0.0f, 0.0f, 0.0f);
+glm::vec3 cameraDirection = glm::normalize(cameraPos - cameraTarget);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [cameraDirection]: Dirección donde mira la cámara]
+
+## Eje derecho
+
+El siguiente que se necesita es un vector derecho que represente el eje `x` del espacio de cámara. Para conseguirlo se especifica primero un vector arriba que apunta hacia arriba en espacio de mundo. Entonces se hace un producto vectorial entre este vector arriba y el vector dirección del paso anterior. Y como el resultado del producto vectorial de dos vectores es otro vector perpendicular a ambos vectores, ya se tiene el vector que apunta hacia la dirección de las `x`´s positivas de la cámara. Cuidado con el orden del producto vectorial, puesto que hacerlo al revés acaba con el vector en la dirección contraria (recordar la regla de la mano derecha para el producto vectorial).
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+glm::vec3 cameraRight = glm::normalize(glm:cross(up, cameraDirection));
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [cameraRight]: Eje derecho de la cámara]
+
+## Eje arriba
+
+Ahora que se tienen los ejes `x` y `z`, calcular el eje `y` es tan sencillo como hacer el producto vectorial entre `x` y `z`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glm::vec3 cameraUp = glm::normalize(glm:cross(cameraDirection, cameraRight));
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [cameraUp]: Eje arriba de la cámara]
+
+# Look At
+
+Si se define un espacio de coordenadas usando 3 ejes perpendiculares (o no lineales) se puede crear una matriz con esos 3 ejes y un vector de traslación y se puede transformar cualquier vector a ese espacio de coordenadas multiplicándolo por esta matriz. Eso es exactamente lo que la matriz `LookAt` hace, y ahora que se tienen los 3 ejes y la posición que define la cámara se puede crear la matriz `LookAt` para esta cámara.
+
+\begin{equation}
+LookAt =
+\begin{bmatrix}
+R_x & R_y & R_z & 0\\
+U_x & U_y & U_z & 0\\
+D_x & D_y & D_z & 0\\
+0 & 0 & 0 & 1
+\end{bmatrix}
+\cdot
+\begin{bmatrix}
+1 & 0 & 0 & -P_x\\
+0 & 1 & 0 & -P_y\\
+0 & 0 & 1 & -P_z\\
+0 & 0 & 0 & 1
+\end{bmatrix}
+\end{equation}
+
+Donde `R` es el vector derecha con el eje `x`, `U` es el vector arriba con el eje `y`, `D` es el vector dirección con el eje `z`, y `P` es la posición de la cámara. El vector posición está invertido puesto que se quiere mover el mundo en la dirección opuesta hacia donde se quiere mover la cámara. Usar esta matriz como la matriz `view` transformará todas las coordenadas de mundo al espacio de vista que se ha definido. La matriz `LookAt` crea una matriz `view` que mira a un punto determinado.
+
+Es algo tan común, que *GLM* ya hace todo este trabajo internamente y lo resume en una sola función, `lookAt`, que recibe la posición de la cámara, un punto de destino donde mira y un vector que representa el vector arriba en espacio de mundo.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glm::mat4 view = glm::lookAt(glm::vec3(0.0f, 0.0f, 3.0f),  // position of camera
+                             glm::vec3(0.0f, 0.0f, 0.0f),  // point to look
+                             glm::vec3(0.0f, 1.0f, 0.0f)); // up vector
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [view]: Matriz `view`]
+
+Para probar esta manera de crear la matriz `view`, se va a mover la cámara alrededor del mundo dando vueltas mirando siempre al centro de la escena.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+float radius = 10.0f;
+float camX = sin(glfwGetTime()) * radius;
+float camZ = cos(glfwGetTime()) * radius;
+glm::mat4 view = glm::lookAt(glm::vec3(camX, 0.0f, camZ),
+                             glm::vec3(0.0f, 0.0f, 0.0f),
+                             glm::vec3(0.0f, 1.0f, 0.0f));
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [view]: Matriz `view` rotando]
+
+Con un poco de trigonometría se crea un circulo en los ejes `x` y `z`, y se mueve la cámara a través de él, siempre mirando hacia el centro de la escena.
+
+![Figure [res/012_002]: La cámara rotando alrededor de la escena de cubos](res/012_002.png)
+
+# Moviendo la cámara
+
+Para mover la cámara con el teclado, primero se van a definir cinco variables globales.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 3.0f);
+const glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
+const glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
+const glm::vec3 cameraRight = glm::normalize(glm::cross(cameraFront, cameraUp));
+const float cameraSpeed = 0.002f;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [cam_vars]: Variables que definen la cámara]
+
+Que alojan la posición de la cámara en cada momento, un vector `front` que va a indicar en qué dirección va a mirar la cámara, el vector arriba de la cámara, el vector derecha calculado como el producto vectorial entre el `up` y el `front`, y un `float` con la velocidad de la cámara (este parámetro hay que ajustarlo ahora a ojo puesto que no integramos con el tiempo y es dependiente de la velocidad de pintado en cada ordenador).
+
+El vector `right` se normaliza para evitar que la posible variación en el vector `front` afecte a la longitud del vector `right`, y por tanto desvirtúe la velocidad de movimiento.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glm::mat4 view = glm::mat4(1.0f);
+view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [cam_vars_view]: Matriz `view`]
+
+Ahora la matriz `view` se calcula de esta manera, con el punto donde está mirando obtenido siempre un poco hacia delante en `z` de donde esté situada la cámara en cada momento.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+void handleInput(GLFWwindow* window) {
+  if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+    glfwSetWindowShouldClose(window, true);
+  if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+    cameraPos += camSpeed * cameraFront;
+  if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+    cameraPos -= camSpeed * cameraFront;
+  if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+    cameraPos -= camSpeed * cameraRight;
+  if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+    cameraPos += camSpeed * cameraRight;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [handle_input]: Manejar la posición de la cámara con el teclado]
+
+Y en la función de procesar la entrada de teclado de *GLFW*, manejamos las cuatro teclas `WASD`. En caso de mover hacia arriba o abajo, simplemente se actualiza la posición de la cámara con el vector `front` multiplicado por la velocidad. En caso de mover a izquierda o derecha, se actualiza la posición de la cámara con el vector `right` multiplicado por la velocidad.
+
+Al ejecutar esta demo se puede mover la cámara haciendo uso de las teclas `WASD`.
+
+## Integrar
+
+Para evitar que el movimiento sea dependiente de la velocidad del ordenador (cuanto más rápido sea, más frames se ejecutan en el mismo tiempo, y por tanto más rápido varia la posición, puesto que se realizan más llamadas a la función `handleInput` en el mismo lapso), se suele integrar el movimiento respecto del tiempo. Para ello se suele hacer uso de una variable `deltaTime`, que registra el tiempo que ha pasado desde la última vez que se actualizó el último frame. Por tanto, cuando se tiene un `deltaTime` muy alto, significa que ha pasado mucho tiempo desde la última actualización y la posición se actualiza teniendo este factor en cuenta. Con lo cual sin importar la velocidad del ordenador la velocidad de movimiento es la misma en todos ellos.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+float lastFrame = 0.0f;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [last_frame]: Variable para guardar el tiempo del último frame]
+
+Se guardan como variable global un `float`, para guardar el momento en el tiempo en que se ejecutó el último frame.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+float currentFrame = glfwGetTime();
+float deltaTime = currentFrame - lastFrame;
+lastFrame = currentFrame;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [delta_time]: Cálculo del tiempo que ha pasado desde el último frame]
+
+Se obtiene el `deltaTime`, con la diferencia entre ese tiempo anterior y el actual, que corresponde con el tiempo que ha pasado desde el último frame. Dentro del `main loop` se calcula el tiempo actual, la diferencia con el anterior, y se guarda el actual para el siguiente frame.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+void handleInput(GLFWwindow* window, const float delta) {
+  float camSpeed = cameraSpeed * delta;
+  if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+    glfwSetWindowShouldClose(window, true);
+  if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+    cameraPos += camSpeed * cameraFront;
+  if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+    cameraPos -= camSpeed * cameraFront;
+  if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+    cameraPos -= camSpeed * cameraRight;
+  if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+    cameraPos += camSpeed * cameraRight;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [handle_input_delta]: Manejar la posición de la cámara con el teclado con `deltaTime`]
+
+Y a la hora de actualizar las posiciones se multiplica todo por el `deltaTime`, haciendo que ahora sea consistente la velocidad de movimiento independientemente de la velocidad del ordenador.
+
+# Mirando Alrededor
+
+Para mirar alrededor de la escena se va a añadir el uso del ratón. Hay que cambiar el vector `cameraFront` basándose en el movimiento del ratón.
+
+## Ángulos Euler
+
+Los ángulos `Euler` son 3 valores que pueden representar cualquier rotación en 3D, son tres, `pitch`, `yaw` y `roll`.
+
+![Figure [res/012_003]: `Pitch`, `yaw` y `roll`](res/012_003.png)
+
+`Pitch` es el ángulo que determina si se está mirando hacia arriba o abajo (rotación sobre el eje `x`), `Yaw` determina si se está mirando a izquierda o derecha (rotación sobre eje `y`) y `Roll` determina como se gira la cabeza hacia los lados (rotación sobre eje `z`). Con la combinación de estos tres ángulos se puede calcular cualquier vector de rotación en 3D.
+
+Por ahora solo se va a tomar en cuenta el `yaw` y `pitch`. Dado un `pitch` y un `yaw` se pueden convertir a un vector 3D que representa un nuevo vector dirección.
+
+![Figure [res/012_004]: Hipotenusa longitud 1](res/012_004.png)
+
+Si se define la hipotenusa de longitud 1, por trigonometría se sabe que la longitud del lado adyacente es $cos(\frac{x}{h}) = cos(\frac{x}{1}) = cos(x)$ y en el lado opuesto $sin(\frac{y}{h}) = sin(\frac{y}{1}) = sin(y)$. Esto nos da la forma de conseguir la longitud de las direcciones `x` e `y`, dependiendo del ángulo.
+
+![Figure [res/012_005]:  Cálculo del Pitch](res/012_005.png)
+
+Este triángulo es parecido al anterior, si se visualiza como que se está sobre el plano `xz` y mirando hacia el eje `y` se puede calcular la longitud de la dirección `y` (cuando se mira hacia arriba o abajo) basándose en el primer triángulo. El valor de `y` para un pitch dado es $sin{\theta}$.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glm::vec3 direction;
+direction.x = sin(glm::radians(pitch));
+direction.y = cos(glm::radians(pitch));
+direction.z = cos(glm::radians(pitch));
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [pitch]: Cálculo del `pitch`]
+
+Los componentes para el `yaw` se calculan con un triángulo parecido al del `pitch`.
+
+![Figure [res/012_006]:  Cálculo del Yaw](res/012_006.png)
+
+Se puede ver que el componente `x` depende del coseno del `yaw`, y el `z` depende del seno del `yaw`. Añadiendo esto a los valores anteriores se obtiene un vector dirección basado en el `pitch` y `yaw`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glm::vec3 direction;
+direction.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+direction.y = sin(glm::radians(pitch));
+direction.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [yaw]: Cálculo del `yaw`]
+
+## Ratón
+
+Los valores de `pitch` y `yaw` se obtendrán de la entrada del movimiento del ratón donde el movimiento horizontal afecta al `yaw` y el movimiento vertical al `pitch`. Hay que guardar las posiciones del ratón en el último frame y en el actual se calcula cuanto han cambiado. Cuanto más haya cambiado, más hay que actualizar el ángulo del `pitch` y el `yaw` y por tanto más se moverá la cámara.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glfwSetCursorPosCallback(window, onMouse);
+glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [mouse_callback]: `Callback` para el movimiento del ratón]
+
+Se le pide a `GLFW` que oculte el cursor y que lo capture, así cuando se mueva el ratón no será visible el puntero y no abandonará la ventana, y también se le pide que llame a una `callback` para escuchar los eventos de movimiento de ratón.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+void onMouse(GLFWwindow* window, double xpos, double ypos) {
+    ....}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [mouse_callback2]: `Callback` para el movimiento del ratón]
+
+`Xpos` e `ypos` son las posiciones actuales del ratón. Cuando se maneja el input del ratón para una cámara como esta hay varios pasos que seguir antes de obtener el vector dirección.
+
+- Calcular cuánto se ha movido el ratón desde el frame anterior
+- Añadir ese valor al `pitch` y `yaw` de la cámara
+- Incluir algunos límites a los máximos/mínimos del `yaw`/`pitch`
+- Calcular el vector dirección
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+bool firstMouse = true;
+float yaw = -90.0f;
+float pitch = 0.0f;
+float lastX = (float)k_screen_width / 2.0;
+float lastY = (float)k_screen_height / 2.0;
+float fov = 45.0f;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [vars_camera]: Variables para controlar el movimiento de la cámara]
+
+Se crean unas variables para controlar el movimiento de la cámara y se desarrolla el código para responder a la `callback` del movimiento del ratón.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+void onMouse(GLFWwindow* window, double xpos, double ypos) {
+  if (firstMouse) {     // initial values the first frame
+    lastX = xpos;
+    lastY = ypos;
+    firstMouse = false;
+  }
+
+  float xoffset = xpos - lastX;  // calc offset movement since last frame
+  float yoffset = lastY - ypos;  // reversed since y-coordinates go from bottom to top
+  lastX = xpos;
+  lastY = ypos;
+
+  float sensitivity = 0.1f;    // constraint movement speed
+  xoffset *= sensitivity;
+  yoffset *= sensitivity;
+
+  yaw += xoffset;   // add offsets to pitch/yaw
+  pitch += yoffset;
+
+  // make sure that when pitch is out of bounds, screen doesn't get flipped
+  if (pitch > 89.0f)
+    pitch = 89.0f;
+  if (pitch < -89.0f)
+    pitch = -89.0f;
+
+  glm::vec3 front;   // calculate the direction vector
+  front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+  front.y = sin(glm::radians(pitch));
+  front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+  cameraFront = glm::normalize(front);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [mouse_callback_complete]: `Callback` del movimiento del ratón con el cálculo del vector dirección y actualizando `pitch` y `yaw`]
+
+Se deja el nuevo valor del `front` de la cámara para calcular la matriz `view` en cada momento, así como para integrar el movimiento de la cámara con el teclado.
+
+## Zoom
+
+También se puede implementar un zoom a la cámara a través del scroll del ratón. Como se vio en apartados anteriores el `FOV` de la cámara define cuanto se puede ver de la escena, cuando el `FOV` se hace pequeño el espacio proyectado de la escena se hace más pequeño, dando la sensación de hacer un zoom.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glfwSetScrollCallback(window, onScroll);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [scroll]: Pedir `callback` del scroll del ratón]
+
+Se le pide a *GLFW* una `callback` para controlar el movimiento de scroll del ratón.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+void onScroll(GLFWwindow* window, double xoffset, double yoffset) {
+  if (fov >= 1.0f && fov <= 45.0f)
+    fov -= yoffset;
+  if (fov <= 1.0f)
+    fov = 1.0f;
+  if (fov >= 45.0f)
+    fov = 45.0f;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [scroll_callback]: `Callback` del scroll del ratón, actualizando el `fov`]
+
+Se cambia el valor del `fov` en función de cuanto se ha hecho scroll verticalmente, y se limitan los valores entre 1 y 45.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glm::mat4 projection = glm::perspective(glm::radians(fov), (float) k_screen_width / (float) k_screen_height, 0.1f, 100.0f);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [projection]: Cálculo de la matriz de proyección]
+
+Y al hacer el cálculo de la matriz de proyección antes de subirla al `uniform` de la GPU se hace uso del valor del `fov` calculado.
+
+Con esto ya se tiene una cámara sencilla de las habituales en los juegos `First Person Shooter`.
+
+Usar ángulos `Euler` no es la mejor de las soluciones, puesto que se puede llegar a ciertos extremos y sufrir de un fenómeno denominado [Gimbal Lock](https://en.wikipedia.org/wiki/Gimbal_lock). Una cámara bien implementada debería hacer uso de `Quaterniones` para las rotaciones.
+
+# Clase Cámara
+
+Otra abstracción pertinente a estas alturas sería crear una clase para contener todos los métodos para una cámara, simplificando el uso de cámaras en escenas más avanzadas.
+
+Hay que tener en cuenta que la cámara que se ha visto está específicamente diseñada para parecerse a la que se usa en los `FPS`, pero no se ajustará a otros usos, cada sistema de cámara tiene sus trucos y formas de hacer las cosas. Por ejemplo, está cámara `FPS` no permite valores de `pitch` mayores de 90 grados, y un vector arriba estático (0,1,0) no funciona cuando se tienen en cuenta valores para el ángulo `roll`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+// Default camera values
+const float k_Yaw = -90.0f;
+const float k_Pitch = 0.0f;
+const float k_Speed = 2.5f;
+const float k_Sensitivity = 0.1f;
+const float k_FOV = 45.0f;
+
+class Camera {
+public:
+    enum class Movement {  // possible options for camera movement
+        Forward = 0,
+        Backward = 1,
+        Left = 2,
+        Right = 3,
+    };
+
+    // Constructor with vectors
+    Camera(const glm::vec3& position = glm::vec3(0.0f, 0.0f, 0.0f), const glm::vec3& up = glm::vec3(0.0f, 1.0f, 0.0f), float yaw = k_Yaw, float pitch = k_Pitch);
+
+    // Constructor with scalars
+    Camera(float posX, float posY, float posZ, float upX, float upY, float upZ,  float yaw, float pitch);
+
+    [[nodiscard]] glm::mat4 getViewMatrix() const;
+    [[nodiscard]] float getFOV() const;
+    [[nodiscard]] glm::vec3 getPosition() const;
+
+    void handleKeyboard(Movement direction, float dt);
+    void handleMouseMovement(float xoffset, float yoffset, bool constrainPitch = true);
+    void handleMouseScroll(float yoffset);
+
+private:
+    void updateCameraVectors();
+
+    glm::vec3 position_, front_, up_, right_, worldUp_;
+    float yaw_, pitch_;
+    float fov_;
+};
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [camera_class]: Clase cámara]
+
+Esta es una sugerencia de la cabecera de la clase cámara tal como se ha explicado en estas secciones.
+
+# Ejercicios
+
+- Hacer que la cámara no permita volar y se comporte como una cámara FPS en la cual el personaje siempre estuviera andando sobre el suelo.
+- Implementar la función LookAt, y no usar la de GLM.
+
+<link rel="stylesheet" href="res/md/viu.css">
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'long'};</script>
+<!-- Markdeep: --><script src="res/md/markdeep.min.js?" charset="utf-8"></script>
