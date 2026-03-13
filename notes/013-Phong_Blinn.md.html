@@ -1,0 +1,485 @@
+<meta charset="utf-8">
+**60GIIN - 013 - Iluminación Phong Blinn**
+    <small>©2026 VIU - 60GIIN Programación Gráfica - Iván Fuertes</small>
+
+# Introducción
+
+En el mundo real los colores abarcan un espectro infinito de variedades, en el mundo digital hay que mapear esos valores reales infinitos a valores digitales finitos, por lo tanto, no todos los colores reales pueden ser representados digitalmente. Sin embargo, se pueden representar suficientes colores para poder notar la diferencia. Los colores digitalmente se representan usando tres componentes `RGB`, Red, Green y Blue. Usando distintas combinaciones de esos tres valores se puede representar casi cualquier color.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glm::vec3 color(1.0f, 0.5f, 0.33f);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [color_rgb]: Color en `RGB`]
+
+Este sería un color con el componente rojo a tope, el componente verde a mitad, y el componente azul a la tercera parte, en la práctica un tono naranja.
+
+Los colores que se aprecian en el mundo real no son propiedades del objeto que se ve, sino que son los colores reflejados por el objeto. Los colores que no son absorbidos por los objetos son los colores que se perciben de ellos. La luz del sol se percibe como luz blanca porque es la suma de todos los colores. Si se apunta luz blanca sobre un objeto azul, este absorbe todos los colores excepto el color azul, que es reflejado y llega hasta los ojos del observador, percibiéndolo como un objeto azul.
+
+Estas reglas se aplican directamente en la programación gráfica. Cuando se define una fuente de luz en *OpenGL* se le da a esta un color.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
+glm::vec3 objectColor(1.0f, 0.5f, 0.33f);
+glm::vec3 result = lightColor * objectColor;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [color_mult]: Luz blanca sobre objeto naranja]
+
+Si se le da a la luz un color blanco (1,1,1), al multiplicar este valor por el color del objeto (1, 0.5, 0.3), el color resultante es el del objeto (1, 0.5, 0.3), es decir, el color reflejado por el objeto y el que se debe percibir. La operación a realizar para calcular el color de un objeto iluminado es multiplicar su color por el color de la luz, o dicho de otro modo la cantidad de cada componente de color que refleja de una fuente de color.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glm::vec3 lightColor(0.0f, 1.0f, 0.0f);
+glm::vec3 objectColor(1.0f, 0.5f, 0.33f);
+glm::vec3 result = lightColor * objectColor;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [color_mult]: Luz verde sobre objeto naranja]
+
+Si el mismo objeto con el mismo color es iluminado por una fuente luz distinta con una luz muy verdosa, entonces el objeto refleja un color (0, 0.5, 0), no tiene componentes rojo ni azul que absorber y solo refleja la mitad del componente verde (determinado por su color). El objeto entonces se vería con un color verde oscuro.
+
+# Escena de iluminación
+
+Para ilustrar los siguientes conceptos se va a construir una escena para simular la iluminación. Se va a crear una esfera que va a representar la fuente de luz, y otra esfera que va a ser el objeto iluminado por esta fuente de luz.
+
+Para el objeto que hace de receptor de la luz se van a usar los atributos de vértice del cubo ya conocidos, esta vez sin atributo de color o uvs. Los shaders para pintarlo van a ser muy sencillos.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+layout (location = 0) in vec3 aPos;
+
+uniform mat4 model;
+uniform mat4 view;
+uniform mat4 proj;
+
+void main() {
+  gl_Position = proj * view * model * vec4(aPos, 1.0);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [vertex_light]: Shader de vértices para el objeto que recibe la luz]
+
+El shader de vértices simplemente transforma la posición a espacio de clip.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+
+out vec4 FragColor;
+
+uniform vec3 objectColor;
+uniform vec3 lightColor;
+
+void main() {
+  FragColor = vec4(lightColor * objectColor, 1.0);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [frag_light]: Shader de fragmentos para el objeto que recibe la luz]
+
+Y el de fragmentos calcula el color como multiplicación de dos uniforms, el color del objeto y el color de la luz, como se ha visto anteriormente.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+const Shader s_phong("../projects/07_Phong/phong.vert", "../projects/07_Phong/phong.frag");
+uint32_t cubeVAO = createVertexData();
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [shader_cube]: Shader y VAO del cubo]
+
+Y a la hora de pintarlo se le dan los valores deseados a los uniforms.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glm::mat4 projection = glm::perspective(glm::radians(camera.getFOV()), (float) k_screen_width / (float) k_screen_height, 0.1f, 100.0f);
+glm::mat4 view = camera.getViewMatrix();
+
+s_phong.use();
+s_phong.set("objectColor", 1.0f, 0.5f, 0.31f);
+s_phong.set("lightColor", 1.0f, 1.0f, 1.0f);
+s_phong.set("proj", projection);
+s_phong.set("view", view);
+s_phong.set("model", glm::mat4(1.0f));
+
+glBindVertexArray(cubeVAO);
+glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [pintar_cube]: Pintar usando el cubo que recibe la luz]
+
+Para el objeto que hace de emisor de luz, se va a volver a usar otro VAO con las mismas características del cubo del receptor. El shader de vértices para este objeto va a ser idéntico al del receptor, proyectar la posición.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+
+out vec4 FragColor;
+
+void main() {
+  FragColor = vec4(1.0);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [frag_lamp]: Shader de fragmentos para el objeto que emite la luz]
+
+Y el de fragmentos va a pintar siempre al emisor de blanco.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+const Shader s_light("../projects/07_Phong/light.vert", "../projects/07_Phong/light.frag");
+uint32_t lightVAO = createVertexData();
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [shader_light]: Shader y VAO del emisor de luz]
+
+El objetivo del cubo que hace de emisor de luz es mostrar la procedencia de la luz, así que se va a guardar en una variable global esa posición.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glm::vec3 lightPos(1.2f, 1.0f, 2.0f);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [light_pos]: Posición del emisor de luz]
+
+Así a la hora de pintarlo se crea una `model` que sitúe la fuente de luz en esa posición y la escale un poco. Y se pasan al shader la `projection` y `view` calculada anteriormente.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glm::mat4 model = glm::mat4(1.0f);
+model = glm::translate(model, lightPos);
+model = glm::scale(model, glm::vec3(0.2f)); // a smaller cube
+
+s_light.use();
+s_light.set("projection", projection);
+s_light.set("view", view);
+s_light.set("model", model);
+
+glBindVertexArray(lightVAO);
+glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [light_pos]: Pintar el emisor de luz]
+
+![Figure [res/013_001]: Escena con fuente de luz y esfera que recibe la luz](res/013_001.png)
+
+# Modelo de iluminación Phong
+
+La iluminación en el mundo real es muy complicada y depende de muchos factores, algo que no se puede abarcar con la limitada potencia de cálculo que se tiene en un ordenador. Así que la iluminación en *OpenGL* se basa en aproximaciones de la realidad usando modelos simplificados que son mucho más simples de procesar y ofrecen resultados similares (como casi todo en el mundo de los videojuegos). Estos modelos están basados en la física de la luz tal como la entendemos. Uno de estos modelos es el `Phong`, y se basa en 3 componentes, `ambient`, `diffuse` y `specular`, que combinados forman el modelo `Phong`.
+
+![Figure [res/013_002]: `Ambient` + `Diffuse` + `Specular` = `Phong`](res/013_002.png)
+
+Incluso cuando está oscuro suele haber un poco de luz de algún origen remoto (luna, luz distante), así que los objetos casi nunca están completamente oscuros. Para simular esto se usa una iluminación ambiente constante que siempre le da al objeto un poco de luz.
+
+La iluminación difusa simula el impacto direccional que una luz tiene sobre un objeto, el que más aporta visualmente al modelo de iluminación. Si una parte del objeto está más orientada hacia la luz, más brillante parece esa parte.
+
+La iluminación specular simula el punto de brillo de una luz que aparece en los objetos brillantes, suele estar influenciada más por el color de la luz que el del objeto.
+
+La función de distribución de reflectancia bidireccional (`BRDF`) que define cómo la luz se refleja en una superficie opaca para el modelo de `Phong` es la siguiente.
+
+\begin{equation}
+I_p = k_a i_a + k_d i_d (L \cdot N) + k_s i_s (R \cdot V)^\alpha
+\end{equation}
+
+Donde los términos `k` vienen definidos por el material del objeto en sus tres componentes, ambiente, difuso y specular. Igualmente los términos `i` son las propiedades en los tres componentes para la luz. Y los vectores `L` (dirección de la luz), `N` (normal a la superficie), `R` (vector reflejo de la luz) y `V` (vector de la vista).
+
+![Figure [res/013_003]: Modelo `Phong`](res/013_003.png)
+
+# Iluminación Ambiente
+
+La luz habitualmente no viene de una sola fuente, si no de varias esparcidas por todas partes, incluso aunque no sean directamente visibles. Una de las propiedades de la luz es que se puede dispersar y rebotar en muchas direcciones alcanzando puntos que no están cerca, la luz puede reflejarse en superficies y tener un impacto indirecto en la iluminación de un objeto. Los algoritmos que tienen en cuenta estos factores se llaman algoritmos de iluminación globales, pero son caros y complicados, y no se suelen usar en programación gráfica en tiempo real.
+
+Se va a usar un modelo muy simple de iluminación global, llamado iluminación ambiente. Se usa una pequeña constante como color de luz que se añade al resultado final del color de los fragmentos del objeto., haciendo que parezca que siempre hay un poco de luz dispersa, aunque no haya una fuente de luz directa.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+out vec4 FragColor;
+
+uniform vec3 objectColor;
+uniform vec3 lightColor;
+uniform float ambientStrenght;
+
+void main() {
+  vec3 ambient = ambientStrenght * lightColor;
+  vec3 phong = ambient * objectColor;
+  FragColor = vec4(phong, 1.0);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [shader_ambient]: Shader de fragmentos con la iluminación ambiente]
+
+Añadir luz ambiente a la escena es sencillo, en el shader de fragmentos del objeto, se coge el color de la luz, se multiplica por un factor de ambiente constante, y se multiplica por el color del objeto. Hay que recordar subir un `uniform` con la fuerza de la luz ambiente.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+s_phong.set("ambientStrenght", 0.1f);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [uniform_ambient]: `Uniform` con la fuerza de la iluminación ambiente]
+
+![Figure [res/013_004]: Escena con iluminación ambiente](res/013_004.png)
+
+# Iluminación Difusa
+
+La iluminación difusa le da al objeto más brillo en los fragmentos que están alineados a los rayos de la luz que llegan desde la fuente de luz.
+
+![Figure [res/013_005]: Incidencia de la luz](res/013_005.png)
+
+Hay una fuente de luz con un rayo de luz que incide sobre un solo fragmento de un objeto. Hay que medir el ángulo en el cual el rayo de luz llega al fragmento. Cuando la luz del rayo es perpendicular a la superficie del objeto es cuando tiene el mayor impacto. Para medir el ángulo entre el rayo de luz y el fragmento se usa el vector normal a la superficie, que es un vector perpendicular a la superficie del fragmento. El ángulo entre los dos vectores entonces se calcula fácilmente mediante el producto escalar.
+
+Por las propiedades del producto escalar se sabe que cuanto menor es el ángulo entre dos vectores unitarios, más cerca de 1 está el producto escalar. Cuando el ángulo entre ambos vectores es de 90 grados el producto escalar vale 0. Lo mismo aplica para el ángulo, cuando mayor sea el ángulo menor impacto tendrá la luz sobre el color del fragmento.
+
+Hay que asegurarse de trabajar con vectores normalizados para obtener tan solo el valor del coseno del ángulo a través del producto escalar. En ese caso el producto escalar entonces devuelve un número escalar que se puede usar para calcular el impacto de la luz en el color del fragmento, iluminando de manera diferente cada fragmento en función de su orientación hacia la luz.
+
+## Normales
+
+Un vector normal es un vector unitario que es perpendicular a la superficie de un vértice. Puesto que un vértice no tiene superficie (es solo un punto en el espacio), se obtiene el vector normal usando los vértices alrededor para averiguar la superficie del vértice. Se pueden calcular los vectores normales de todos los vértices usando el producto vectorial, pero ya que un cubo 3D es bastante sencillo se pueden añadir manualmente como un atributo de vértice más.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+  float vertices[] = {
+    // Position           //Normal
+    -0.5f, -0.5f, 0.5f,   0.0f, 0.0f, 1.0f,  //Front
+    0.5f,  -0.5f, 0.5f,   0.0f, 0.0f, 1.0f,
+    0.5f,  0.5f,  0.5f,   0.0f, 0.0f, 1.0f,
+    -0.5f, 0.5f,  0.5f,   0.0f, 0.0f, 1.0f,
+    0.5f,  -0.5f, 0.5f,   1.0f, 0.0f, 0.0f,//Right
+    0.5f,  -0.5f, -0.5f,  1.0f, 0.0f, 0.0f,
+    0.5f,  0.5f,  -0.5f,  1.0f, 0.0f, 0.0f,
+    0.5f,  0.5f,  0.5f,   1.0f, 0.0f, 0.0f,
+    -0.5f, -0.5f, -0.5f,  0.0f, 0.0f, -1.0f,//Back
+    -0.5f, 0.5f,  -0.5f,  0.0f, 0.0f, -1.0f,
+    0.5f,  0.5f,  -0.5f,  0.0f, 0.0f, -1.0f,
+    0.5f,  -0.5f, -0.5f,  0.0f, 0.0f, -1.0f,
+    -0.5f, -0.5f, 0.5f,   -1.0f, 0.0f, 0.0f,//Left
+    -0.5f, 0.5f,  0.5f,   -1.0f, 0.0f, 0.0f,
+    -0.5f, 0.5f,  -0.5f,  -1.0f, 0.0f, 0.0f,
+    -0.5f, -0.5f, -0.5f,  -1.0f, 0.0f, 0.0f,
+    -0.5f, -0.5f, 0.5f,   0.0f, -1.0f, 0.0f,//Bottom
+    -0.5f, -0.5f, -0.5f,  0.0f, -1.0f, 0.0f,
+    0.5f,  -0.5f, -0.5f,  0.0f, -1.0f, 0.0f,
+    0.5f,  -0.5f, 0.5f,   0.0f, -1.0f, 0.0f,
+    -0.5f, 0.5f,  0.5f,   0.0f, 1.0f, 0.0f,//Top
+    0.5f,  0.5f,  0.5f,   0.0f, 1.0f, 0.0f,
+    0.5f,  0.5f,  -0.5f,  0.0f, 1.0f, 0.0f,
+    -0.5f, 0.5f,  -0.5f,  0.0f, 1.0f, 0.0f,
+  };
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [cube_normals]: Cubo con atributos de posición y normal para cada vértice]
+
+Las normales de la superficie frontal del cubo irán hacia `z`´s positivas, las de la cara derecha hacia `x`´s positivas, las de la cara posterior hacia `z`´s negativas, las de la cara izquierda hacia `x`´s negativas, las de la cara de abajo hacia `y`´s negativas, y las de la cara de arriba hacia `y`´s positivas. Hay que visualizar las normales como vectores perpendiculares que salen de las superficies de los lados del cubo.
+
+Hay que recordar añadir el nuevo atributo al `VAO` y tener cuidado con el `stride` que ahora es de 6.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec3 aNormal;
+
+out vec3 normal;
+
+uniform mat4 model;
+uniform mat4 view;
+uniform mat4 projection;
+
+void main() {
+  normal = aNormal;
+  gl_Position = projection * view * model * vec4(aPos, 1.0);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [vertex_ambient]: Shader de vértices para la iluminación difusa]
+
+En el shader de vértices se añade el atributo en el hueco 1, y se le pasa como salida al shader de fragmentos, donde se declarará como variable de entrada.
+
+## Calcular el color difuso
+
+Ahora ya se tienen los vectores normales para cada vértice en la GPU, para tener toda la información disponible aún se necesitan la posición de la luz y el vector de posición del fragmento. Puesto que la posición de la luz es una variable estática se declara como `uniform` en el shader de fragmentos.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+uniform vec3 lightPos;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [light_pos]: Posición de la luz como `uniform` en el shader de fragmentos]
+
+Y se sube a la GPU con el resto de `uniforms`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+s_phong.set("lightPos", lightPos);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [light_pos2]: Subir `uniform` posición de la luz al shader de fragmentos]
+
+Todos los cálculos de iluminación se van a hacer en espacio de mundo, así que se quiere la posición del vértice en espacio de mundo, multiplicando la posición del vértice solo por la matriz `model`, para transformarlo al espacio de mundo. Entonces se pasa al shader de fragmentos.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+out vec3 fragPos;
+
+void main() {
+  normal = aNormal;
+  fragPos = vec3(model * vec4(aPos, 1.0));
+
+  gl_Position = projection * view * model * vec4(aPos, 1.0);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [frag_pos]: Posición de cada fragmento interpolado en espacio de mundo]
+
+Ahora en el shader de fragmentos ya se pueden hacer todos los cálculos de iluminación.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+out vec4 FragColor;
+
+in vec3 normal;
+in vec3 fragPos;
+
+uniform vec3 objectColor;
+uniform vec3 lightColor;
+uniform vec3 lightPos;
+uniform float ambientStrenght;
+
+void main() {
+  vec3 ambient = ambientStrenght * lightColor;
+
+  vec3 norm = normalize(normal);
+  vec3 lightDir = normalize(lightPos - fragPos);
+  float diff = max(dot(norm, lightDir), 0.0f);
+  vec3 diffuse = diff * lightColor;
+
+  vec3 phong = (ambient + diffuse) * objectColor;
+  FragColor = vec4(phong, 1.0);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [frag_diffuse]: Shader de fragmentos con la iluminación ambiente y difusa]
+
+En el shader de fragmentos se recoge el vector `normal` y la posición del fragmento que ha dejado el shader de vértices. Cuando se realizan cálculos de iluminación no suele importar la magnitud del vector, solo su dirección, por eso se suelen normalizar antes de operar con ellos, así los cálculos son más sencillos, hay que asegurarse de hacerlo siempre. Hay que recordar que los valores de salida de un shader de vértices se pasan interpolados al shader de fragmentos para cada fragmento teniendo en cuenta la distancia de ese fragmento a cada vértice del triángulo.
+
+Una vez normalizado el vector `normal`, se obtiene el vector dirección entre la posición de la luz y la posición del fragmento, restando ambos vectores, y se normaliza. El impacto que la luz tiene sobre el fragmento se mide calculando el producto escalar entre el vector `normal` normalizado y el vector dirección de la luz. Se hace el máximo contra 0.0 porque no se quiere que haya valores para resultados negativos (el vector de luz vendría por detrás de la superficie). El valor calculado se multiplica por el color de la luz para obtener el componente difuso.
+
+El resultado final de la luz es la suma del componente ambiente y el difuso, que multiplicado al color del objeto da como resultado el color final del fragmento.
+
+![Figure [res/013_006]: Luz ambiente y difusa](res/013_006.png)
+
+## Tratamiento de normales
+
+Se han estado pasando vectores normales directamente del shader de vértices al shader de fragmentos, y los cálculos que se han hecho allí han sido en espacio de mundo, pero los vectores normales estaban en espacio local, no se han transformado a espacio de mundo. ¿Por qué?
+
+Primero, los vectores normales son solo vectores de dirección y no representan una posición especifica en el espacio, y además no tienen coordenada homogénea (el componente `w`). Eso significa que una traslación no tendría ningún efecto sobre ellos, si se quiere multiplicar un vector `normal` por una matriz `model` habría que quitar la parte de la traslación de la matriz `4x4` y multiplicar solo con la matriz `3x3` superior (es el mismo efecto que multiplicar una matriz de `4x4` por un vector dirección con coordenada homogénea a 0). Las únicas transformaciones que se quieren aplicar a los vectores normales son los escalados y rotaciones.
+
+Segundo, si la matriz `model` hace un escalado no uniforme, los vértices hubieran cambiado de tal manera que el vector `normal` ya no sería perpendicular a la superficie, así que no se pueden transformar vectores normales con una matriz `model`.
+
+![Figure [res/013_007]: Vector normal con un escalado no uniforme](res/013_007.png)
+
+En la imagen se aprecia que al aplicar un escalado no uniforme al objeto, el vector `N` ya no es perpendicular, se ha desviado. Cuando se aplica un escalado no uniforme los vectores normales dejan de ser perpendiculares a la superficie correspondiente y distorsionan los resultados de la iluminación. Hacer un escalado uniforme no afecta puesto que solo cambiaría su magnitud lo cual es fácilmente solucionable ya que se normalizan antes de usarlos.
+
+El truco para arreglar este comportamiento es usar una matriz `model` distinta específicamente diseñada para los vectores normales, la matriz `normal`. Usa una serie de operaciones lineales para eliminar el efecto del escalado incorrecto. Se define como la traspuesta de la inversa de la matriz `3x3` superior de la matriz `model`. Si se estuviera trabajando en espacio de vista, correspondería a la traspuesta de la inversa de la matriz `3x3` superior de la matriz `view`.
+
+Se puede calcular en el propio shader de vértices.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+mat3 normalMat = mat3(transpose(inverse(model)));
+normal = normalMat * aNormal;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [normal_mat]: Crear matriz `normal` en el shader de vértices]
+
+O en la CPU y subirla como `uniform` para hacer un uso más eficiente.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glm::mat3 normalMat = glm::inverse(glm::transpose(glm::mat3(model)));
+s_phong.set("normalMat", normalMat);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [normal_mat2]: Crear matriz `normal` en CPU y subir el `uniform`]
+
+En el ejemplo funcionaba todo correctamente porque no se realizaba ningún escalado al objeto así que no había necesidad de usar una matriz `normal`, en caso contrario se hubiera tenido que multiplicar la `normal` por la matriz `normal` antes de usarla.
+
+Invertir matrices es un proceso costoso incluso para los shaders y hay que evitarlo a toda costa.
+
+# Iluminación Specular
+
+Tal como ocurría con el componente difuso, el `specular` se basa en el vector dirección de la luz y los vectores normales del objeto, esta vez se añade la dirección del espectador, desde qué dirección el espectador está mirando al fragmento. Se basa en las propiedades reflectivas de la luz.
+
+![Figure [res/013_003]: Iluminación `specular`](res/013_003.png)
+
+Se calcula un vector reflejado `R`, reflejando la dirección de la luz `L`, alrededor del vector normal `N`. Entonces se calcula la distancia angular entre este vector reflejado y la dirección de la vista del espectador, cuanto más pequeño sea ese ángulo mayor será el impacto de la luz specular. El efecto perseguido es que se vea un reflejo cuando se está mirando a la dirección de la luz reflejada a través del objeto.
+
+Se ha elegido realizar los cálculos de iluminación en espacio de mundo, también es común realizarlo en espacio de vista, en ese caso la posición del espectador (que coincide con la posición de la cámara) es siempre (0, 0, 0) simplificando las cosas.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+s_phong.set("viewPos", camera.getPosition());
+s_phong.set("shininess", 64);
+s_phong.set("specularStrength", 0.6f);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [specular_uniforms]: `Uniforms` para la luz `specular`]
+
+Se le pasan a los shaders tres nuevos `uniforms`, la posición del espectador es la posición de la cámara que ya está en espacio de mundo, el nivel de brillo del `specular` y la fuerza del mismo.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+out vec4 FragColor;
+
+in vec3 normal;
+in vec3 fragPos;
+
+uniform vec3 objectColor;
+uniform vec3 lightColor;
+uniform vec3 lightPos;
+uniform vec3 viewPos;
+uniform float ambientStrenght;
+uniform int shininess;
+uniform float specularStrength;
+
+void main() {
+  vec3 ambient = ambientStrenght * lightColor;
+
+  vec3 norm = normalize(normal);
+  vec3 lightDir = normalize(lightPos - fragPos);
+  float diff = max(dot(norm, lightDir), 0.0f);
+  vec3 diffuse = diff * lightColor;
+
+  vec3 viewDir = normalize(viewPos - fragPos);
+  vec3 reflectDir = reflect(-lightDir, norm);
+  float spec = pow(max(dot(viewDir, reflectDir), 0.0f), shininess);
+  vec3 specular = specularStrength * spec * lightColor;
+
+  vec3 phong = (ambient + diffuse + specular) * objectColor;
+  FragColor = vec4(phong, 1.0f);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [specular_fragment]: Shader de fragmentos para la luz `specular`]
+
+Los nuevos cálculos se realizan en el shader de fragmentos. Primero se calcula el vector dirección desde la posición del espectador restándole a la posición de la cámara la posición del fragmento. Luego se refleja el vector de la luz alrededor de la normal con la función `reflect` de *GLSL*. Hay que negar el vector de la luz, la función `reflect` espera que el primer vector apunte desde la fuente de luz hacia la posición del fragmento, pero el vector de la luz está apuntando justo hacia el lado contrario, desde el fragmento hacia la luz. A continuación, se calcula el componente `specular`, con el producto escalar entre el vector del espectador y el reflejado por la luz, como en el difuso, limitado a valores positivos, y elevado a la potencia del brillo del reflejo deseado. Cuanto más alto sea el brillo de un objeto más va a reflejar la luz en lugar de dispersarla y por tanto más pequeño va a ser el brillo (pero más intenso). Finalmente se calcula el color multiplicando por el color de la luz con un factor de fuerza. Esto se suma a los anteriores valores de iluminación de ambiente y difusa para conseguir el valor final de iluminación para el modelo `Phong`.
+
+![Figure [res/013_008]: Modelo de iluminación Phong completo](res/013_008.png)
+
+# Gouraud
+
+Si el modelo de iluminación se implementa en el shader de vértices en lugar de hacerlo en el de fragmentos entonces se llama modelo de iluminación `Gouraud`. Es más eficiente puesto que se realizan muchos menos cálculos, hay menos vértices que fragmentos. Pero el valor de color entonces se calcula por vértice, y los colores de los fragmentos de alrededor se calculan por interpolación, lo que resulta en un modelo mucho menos realista a menos que se usen objetos con muchos vértices.
+
+![Figure [res/013_009]: Gouraud vs Phong](res/013_009.png)
+
+# Blinn
+
+El modelo de iluminación `Phong` es una aproximación muy eficiente, pero los reflejos `speculares` funcionan mal bajo determinadas condiciones, concretamente si se usa un valor de brillo (`shininess`) bajo en un área `specular` grande.
+
+![Figure [res/013_010]: `Phong` con valor de `shininess` a 1](res/013_010.png)
+
+Se puede observar en los bordes que el área `specular` se corta de manera abrupta. Esto sucede porque al ángulo entre el vector de vista y el del reflejo de la luz no se le permite ir más allá de 90º. Si ese ángulo es mayor de 90º entonces el producto escalar resultante se convierte en negativo y eso da como resultado un exponente `specular` de `0.0`.
+
+![Figure [res/013_011]: Ángulo superior a 90º](res/013_011.png)
+
+En la imagen izquierda el modelo `Phong` se muestra con un ángulo `θ` de menos de 90º, pero en la imagen de la derecha se puede observar que el ángulo `θ` entre la vista y el reflejo es mayor de 90º, y como resultado anula la contribución `specular`. Esto no suele ser un problema, puesto que la dirección de la vista está lejos de la dirección del reflejo de la luz, pero si se usa un exponente `specular` muy bajo, entonces el radio `specular` es lo suficientemente grande para mostrar su contribución bajo estas condiciones. En ese caso se está anulando su contribución para ángulos mayores a 90º.
+
+El modelo de iluminación `Blinn` es una extensión al modelo `Phong`, es prácticamente idéntico, pero aproxima el modelo `specular` de una manera ligeramente distinta que soluciona el anterior problema. En lugar de usar el vector de reflejo, se usa el llamado vector mitad (`halfway vector`), que es un vector unitario exactamente a mitad camino entre la dirección de la vista y la dirección de la luz. Cuando más se alinea este vector con la normal de la superficie, mayor es la contribución `specular`.
+
+![Figure [res/013_012]: Modelo `Blinn` con el vector `halfway`](res/013_012.png)
+
+Cuando el vector de vista está perfectamente alineado con el vector reflejo, entonces el vector `halfway` se alinea perfectamente con el vector `normal` de la superficie. Así pues, cuando la vista está más alineada con la dirección reflejo original, más fuerte el brillo `specular` debe ser.
+
+Así, independientemente de la dirección desde la que se está viendo, el ángulo entre el vector `halfway` y la normal de la superficie nunca excede 90º (a menos que la luz esté por debajo de la superficie). Esto produce unos resultados un poco distintos comparados con los reflejos `Phong`, pero siguen pareciendo suficientemente creíbles, especialmente con exponentes `speculares` bajos.
+
+Calcular el vector `halfway` es fácil, se suma el vector dirección de la luz al vector de la vista y se normaliza el resultado.
+
+\begin{equation}
+\vec{H} = \frac{\vec{L}+\vec{V}}{|\vec{L}+\vec{V}|}
+\end{equation}
+
+El cálculo del componente `specular` básicamente es el producto escalar entre la normal de la superficie y el vector `halfway` para conseguir el coseno del ángulo entre ellos para elevarlo al exponente `shininess`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+vec3 lightDir = normalize(lightPos - fragPos);
+vec3 viewDir = normalize(viewPos - fragPos);
+vec3 halfwayDir = normalize(lightDir + viewDir);
+float spec = pow(max(dot(normal, halfwayDir), 0.0), shininess);
+vec3 specular = specularStrength * spec * lightColor;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [specular_blinn]: Shader de fragmentos para la luz `specular` en el modelo `Blinn`]
+
+La única diferencia entre el brillo specular `Blinn` y `Phong` es que ahora se mide el ángulo entre la normal y el `halfway`, en lugar del ángulo entre la dirección de vista y el vector reflejo.
+
+Otra diferencia sutil entre estos dos modelos es que el ángulo entre el vector `halfway` y la normal de la superficie es a menudo más pequeño que el ángulo entre los vectores de vista y reflejo, como resultado para conseguir resultados similares, el exponente `shininess` hay que ponerlo un poco más alto. Por lo general se suele poner entre 2 y 4 veces el que se usa en `Phong`.
+
+![Figure [res/013_013]: Blinn con valor de shininess a 1](res/013_013.png)
+
+# Ejercicios
+
+- Mover la luz alrededor del cubo describiendo un circulo sobre el eje Y.
+- Cambiar valores de ambient, diffuse, specular y shininess y ver como se comporta el modelo de iluminación.
+- Hacer el modelo de iluminación Phong en espacio de view, en lugar de en espacio de mundo.
+
+<link rel="stylesheet" href="res/md/viu.css">
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'long'};</script>
+<!-- Markdeep: --><script src="res/md/markdeep.min.js?" charset="utf-8"></script>

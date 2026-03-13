@@ -1,0 +1,136 @@
+<meta charset="utf-8">
+**60GIIN - 014 - Materiales**
+    <small>©2026 VIU - 60GIIN Programación Gráfica - Iván Fuertes</small>
+
+# Introducción
+
+En el mundo real cada objeto reacciona de manera distinta a la luz. Los objetos metálicos suelen ser más brillantes que una vasija de cerámica, y un contenedor de madera no refleja la luz de igual manera que uno de acero. Cada objeto también refleja de manera distinta los brillos. Algunos objetos reflejan la luz sin mucha dispersión, mostrando pequeños brillos mientras que otros la dispersan en radios mucho más amplios. Si se quieren simular muchos tipos distintos de objetos en *OpenGL* hay que definir propiedades de material distintas para cada objeto.
+
+Hasta ahora se ha definido un objeto y un color de luz para definir el aspecto del objeto, combinado con una intensidad ambiente y specular. Cuando se definen objetos se puede definir un color de material para cada uno de los 3 componentes de iluminación, ambiente, difuso y specular. Especificando esto se tiene un control fino sobre el color final del objeto. Se le añade un componente de brillo a esos 3 colores y se tienen las propiedades de material deseadas.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+struct Material {
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+    float shininess;
+};
+
+uniform Material material;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [material_frag]: Estructura para definir un material en el shader de fragmentos]
+
+En el shader de fragmentos se crea un `struct` para almacenar las propiedades del material del objeto. Se define la estructura y luego se declara una variable `uniform` de ese tipo.
+
+Se define un vector de color para componente de la iluminación `Phong`. Es decir, el color que reflejará el objeto bajo cada uno de los tres componentes. Y también el brillo que actúa sobre la dispersión del brillo specular.  Con estos 4 componentes se pueden simular muchos [materiales](http://devernay.free.fr/cours/opengl/materials.html) del mundo real.
+
+![Figure [res/014_001]: Varios materiales aplicados al cubo](res/014_001.png)
+
+En el shader de fragmentos hay que cambiar los cálculos de la iluminación para tener en cuenta los nuevos parámetros de los materiales.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+void main() {
+  vec3 ambient = lightColor * material.ambient;
+
+  vec3 norm = normalize(normal);
+  vec3 lightDir = normalize(lightPos - fragPos);
+  float diff = max(dot(norm, lightDir), 0.0f);
+  vec3 diffuse = lightColor * (diff * material.diffuse);
+
+  vec3 viewDir = normalize(viewPos - fragPos);
+  vec3 reflectDir = reflect(-lightDir, norm);
+  float spec = pow(max(dot(viewDir, reflectDir), 0.0f), material.shininess);
+  vec3 specular = lightColor * (spec * material.specular);
+
+  vec3 phong = ambient + diffuse + specular;
+  FragColor = vec4(phong, 1.0f);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [material_phong]: Iluminación usando propiedades del material en el shader de fragmentos]
+
+Se accede a los valores del material cuando se necesita y ahora se calcula el color resultante de cada componente de la iluminación teniendo en cuenta el color del material. Cada atributo del material del objeto es multiplicado por sus respectivos componentes de iluminación.
+
+Ahora hay que subir estas propiedades a la GPU. Un `strucT` en *GLSL* no es especial a la hora de subir `uniforms`. Solo actúa como una encapsulación de los `uniforms`, así que para llenar el `struct` hay que hacerlo a través de los `uniforms` individuales, pero con el prefijo del `struct`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+s_phong.set("material.ambient", 1.0f, 0.5f, 0.31f);
+s_phong.set("material.diffuse", 1.0f, 0.5f, 0.31f);
+s_phong.set("material.specular", 0.5f, 0.5f, 0.5f);
+s_phong.set("material.shininess", 32.0f);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [material_uniforms]: Subir `uniforms` con las propiedades del material]
+
+Se pone el ambiente y el difuso al color deseado del objeto y el `specular` a un color de medio gris, para que no sea demasiado fuerte en este objeto. El brillo se mantiene a 32.
+
+![Figure [res/014_002]: Escena con materiales](res/014_002.png)
+
+# Propiedades de la luz
+
+El objeto es demasiado brillante, los colores de los tres componentes ambiente, difuso y specular son reflejados con toda la fuerza desde cualquier fuente de luz. Las fuentes de luz también tienen diferentes intensidades para sus tres componentes.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+struct Light {
+    vec3 position;
+
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+};
+
+uniform Light light;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [light_frag]: Propiedades de la luz en el shader de fragmentos]
+
+En el shader de fragmentos se crea un `struct` para almacenar las propiedades de una fuente de luz, su posición y las tres diferentes intensidades para cada componente, en lugar de usar una fuerza como se hacía anteriormente para el `specular` y el ambient, ahora se van a controlar los tres componentes y además en cada uno de ellos se va a controlar la intensidad por separado de cada canal de color, teniendo mucho más control sobre la configuración de la luz.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+vec3 ambient = light.ambient * material.ambient;
+vec3 diffuse = light.diffuse * (diff * material.diffuse);
+vec3 specular = light.specular * (spec * material.specular);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [light_phong]: Iluminación usando propiedades de la luz en el shader de fragmentos]
+
+Cuando se calculan las tres componentes en el shader, se hace uso de las propiedades de la luz para influir en el color final.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+lightingShader.set("light.position", lightPos);
+lightingShader.set("light.ambient", 0.2f, 0.2f, 0.2f);
+lightingShader.set("light.diffuse", 0.5f, 0.5f, 0.5f);
+lightingShader.set("light.specular", 1.0f, 1.0f, 1.0f);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [light_uniforms]: Subir `uniforms` con las propiedades de la luz]
+
+Y se suben los nuevos `uniforms` a la GPU. El ambiente normalmente se suele poner a muy baja intensidad porque no se quiere que domine demasiado la escena. El difuso de una fuente de luz normalmente se suele poner al color exacto que se quiere poner a la luz, normalmente un blanco. Y por último el `specular` se suele poner a blanco a tope de intensidad.
+
+![Figure [res/014_003]: Escena con materiales y propiedades de luz](res/014_003.png)
+
+## Cambiar colores de la luz
+
+Ahora que se tiene control absoluto sobre los materiales y las propiedades de la luz, se hace uso de ello y se van a cambiar los colores de los distintos componentes de la luz en el tiempo.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+  glm::vec3 lightColor;
+  lightColor.x = sin(glfwGetTime() * 2.0f);
+  lightColor.y = sin(glfwGetTime() * 0.7f);
+  lightColor.z = sin(glfwGetTime() * 1.3f);
+
+  glm::vec3 diffuseColor = lightColor   * glm::vec3(0.5f); // decrease the influence
+  glm::vec3 ambientColor = diffuseColor * glm::vec3(0.2f); // low influence
+
+  lightingShader.set("light.ambient", ambientColor);
+  lightingShader.set("light.diffuse", diffuseColor);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [light_colors]: Modificar propiedades de la luz con el tiempo]
+
+Cuando se suben los `uniforms` de los componentes de ambient y difuso se van variando los componentes de color respecto del tiempo que va pasando, y se ajustan las intensidades.
+
+![Figure [res/014_004]: Escena con materiales y propiedades de luz](res/014_004.png)
+
+# Ejercicios
+
+- Simular varios objetos reales con sus materiales según la tabla en http://devernay.free.fr/cours/opengl/materials.html (tener en cuenta que esos valores están calculados para luces blancas vec3(1.0)
+- Cambiar valores de ambient, diffuse, specular de la luz y ver como afecta a como se ve el cubo
+
+<link rel="stylesheet" href="res/md/viu.css">
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'long'};</script>
+<!-- Markdeep: --><script src="res/md/markdeep.min.js?" charset="utf-8"></script>
