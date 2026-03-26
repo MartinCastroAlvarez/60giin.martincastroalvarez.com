@@ -6,4 +6,6 @@ set(PROJECT_LIST
     04_Color_Tri
     05_Text
     06_Text_Class
+    07_3D_Geo
+    08_Cube
     )
