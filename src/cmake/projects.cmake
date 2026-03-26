@@ -5,4 +5,5 @@ set(PROJECT_LIST
     03_Tri_W
     04_Color_Tri
     05_Text
+    06_Text_Class
     )
