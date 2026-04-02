@@ -8,4 +8,6 @@ set(PROJECT_LIST
     06_Text_Class
     07_3D_Geo
     08_Cube
+    09_Camera
+    10_Camera_Class
     )
