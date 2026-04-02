@@ -13,7 +13,7 @@
 #include "engine/window.hpp"
 #include "engine/shader.hpp"
 #include "engine/texture.hpp"
-#include "engine/geometry/teapot.hpp"
+#include "engine/geometry/sphere.hpp"
 
 std::vector<glm::vec3> cubePositions{
   glm::vec3(0.0f, 0.0f,0.0f),
@@ -68,7 +68,7 @@ int main(int argc, char* argv[]) {
 
   glClearColor(0.0f, 0.3f, 0.6f, 1.0f);
 
-  const Teapot geom = Teapot(20);
+  const Sphere geom = Sphere(2.0f, 25, 25);
   const Texture texture1 = Texture(ASSETS_PATH "textures/blue_blocks.jpg", Texture::Format::RGB);
   const Texture texture2 = Texture(ASSETS_PATH "textures/bricks_arrow.jpg", Texture::Format::RGB);
   const Shader shader(PROJECT_PATH "text.vert", PROJECT_PATH "text.frag");
