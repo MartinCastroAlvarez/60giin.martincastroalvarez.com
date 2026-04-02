@@ -33,7 +33,6 @@ std::vector<glm::vec3> cubePositions{
 // Camera parameters
 Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
 
-float fov = 45.0f;
 const float near = 0.1f;
 const float far = 50.0f;
 
@@ -85,7 +84,7 @@ void render(const Shader& shader, const Geometry& geo, const Texture& texture1, 
   glm::mat4 view = camera.getViewMatrix();
   shader.set("view", view);
 
-  const glm::mat4 proj = glm::perspective(glm::radians(fov), (float)Window::instance()->getWidth() / (float)Window::instance()->getHeight(), near, far);
+  const glm::mat4 proj = glm::perspective(glm::radians(camera.getFOV()), (float)Window::instance()->getWidth() / (float)Window::instance()->getHeight(), near, far);
   shader.set("proj", proj);
 
   for (size_t i = 0; i < cubePositions.size(); ++i) {
