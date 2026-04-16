@@ -30,6 +30,14 @@ glm::vec3 Camera::getPosition() const {
   return position_;
 }
 
+float Camera::getNear() const {
+  return near_;
+}
+
+float Camera::getFar() const {
+  return far_;
+}
+
 void Camera::updateCameraVectors() {
   glm::vec3 front;   // calculate the direction vector
   front.x = cos(glm::radians(yaw_)) * cos(glm::radians(pitch_));

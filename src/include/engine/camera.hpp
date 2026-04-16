@@ -9,6 +9,8 @@ const float k_Pitch = 0.0f;
 const float k_Speed = 1.0f;
 const float k_Sensitivity = 0.05f;
 const float k_FOV = 45.0f;
+const float k_Near = 0.1f;
+const float k_Far = 45.0f;
 
 class Camera {
 public:
@@ -28,6 +30,8 @@ public:
   [[nodiscard]] glm::mat4 getViewMatrix() const;
   [[nodiscard]] float getFOV() const;
   [[nodiscard]] glm::vec3 getPosition() const;
+  [[nodiscard]] float getNear() const;
+  [[nodiscard]] float getFar() const;
 
   void handleKeyboard(Movement direction, float dt);
   void handleMouseMovement(float xoffset, float yoffset, bool constrainPitch = true);
@@ -39,4 +43,6 @@ private:
   glm::vec3 position_, front_, up_, right_, worldUp_;
   float yaw_, pitch_;
   float fov_;
+  float near_ = k_Near;
+  float far_ = k_Far;
 };

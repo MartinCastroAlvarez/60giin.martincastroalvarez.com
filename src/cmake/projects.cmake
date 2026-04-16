@@ -10,4 +10,5 @@ set(PROJECT_LIST
     08_Cube
     09_Camera
     10_Camera_Class
+    11_Phong_Blinn
     )

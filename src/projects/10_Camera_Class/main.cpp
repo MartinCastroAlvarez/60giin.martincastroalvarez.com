@@ -15,6 +15,7 @@
 #include "engine/shader.hpp"
 #include "engine/texture.hpp"
 #include "engine/camera.hpp"
+#include "engine/camera_controller.hpp"
 #include "engine/geometry/sphere.hpp"
 
 std::vector<glm::vec3> cubePositions{
@@ -32,45 +33,11 @@ std::vector<glm::vec3> cubePositions{
 
 // Camera parameters
 Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
+CameraController cameraController(camera);
 
-const float near = 0.1f;
-const float far = 50.0f;
-
-float yaw = -90.0f;
-float pitch = 0.0f;
-float lastX, lastY;
-bool firstMouse = true;
-
-void onMouseMove(float x, float y) {
-  if (firstMouse) {
-    lastX = x;
-    lastY = y;
-    firstMouse = false;
-  }
-
-  float xOffset = (x - lastX);
-  float yOffset = (lastY - y);
-  lastX = x;
-  lastY = y;
-
-  camera.handleMouseMovement(xOffset, yOffset);
-}
-
-void onScrollMove(float xOffset, float yOffset) {
-  camera.handleMouseScroll(yOffset);
-}
 
 void handleInput(const float deltaTime) {
-  Input* input = Input::instance();
-
-  if (input->isKeyPressed(GLFW_KEY_W))
-    camera.handleKeyboard(Camera::Movement::Forward, deltaTime);
-  if (input->isKeyPressed(GLFW_KEY_S))
-    camera.handleKeyboard(Camera::Movement::Backward, deltaTime);
-  if (input->isKeyPressed(GLFW_KEY_A))
-    camera.handleKeyboard(Camera::Movement::Left, deltaTime);
-  if (input->isKeyPressed(GLFW_KEY_D))
-    camera.handleKeyboard(Camera::Movement::Right, deltaTime);
+  cameraController.handleInput(deltaTime);
 }
 
 void render(const Shader& shader, const Geometry& geo, const Texture& texture1, const Texture& texture2) {
@@ -84,7 +51,7 @@ void render(const Shader& shader, const Geometry& geo, const Texture& texture1, 
   glm::mat4 view = camera.getViewMatrix();
   shader.set("view", view);
 
-  const glm::mat4 proj = glm::perspective(glm::radians(camera.getFOV()), (float)Window::instance()->getWidth() / (float)Window::instance()->getHeight(), near, far);
+  const glm::mat4 proj = glm::perspective(glm::radians(camera.getFOV()), (float)Window::instance()->getWidth() / (float)Window::instance()->getHeight(), camera.getNear(), camera.getFar());
   shader.set("proj", proj);
 
   for (size_t i = 0; i < cubePositions.size(); ++i) {
@@ -104,9 +71,6 @@ int main(int argc, char* argv[]) {
   Window* window = Window::instance();
   window->setCaptureMouse(true);
   Input* input = Input::instance();
-
-  input->setMouseMoveCallback(onMouseMove);
-  input->setScrollMoveCallback(onScrollMove);
 
   stbi_set_flip_vertically_on_load(true);
 
