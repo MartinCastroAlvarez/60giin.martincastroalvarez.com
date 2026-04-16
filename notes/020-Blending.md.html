@@ -1,0 +1,208 @@
+<meta charset="utf-8">
+**60GIIN - 020 - Blending**
+    <small>©2026 VIU - 60GIIN Programación Gráfica - Iván Fuertes</small>
+
+# Introducción
+
+El `blending` es una técnica para implementar transparencia entre objetos. La transparencia supone que los objetos o partes de ellos no tienen color sólido, sino una combinación de colores del objeto en sí mismo y cualquier otro objeto que se encuentra detrás con una intensidad variable. Una ventana de cristal coloreado es un objeto transparente, el cristal tiene un color propio, pero el color resultante con el que se le ve contiene también a los colores del resto de objetos detrás del cristal. Se mezclan varios colores de diferentes objetos en un solo color. La transparencia permite ver a través de los objetos.
+
+Los objetos transparentes pueden ser completamente transparentes (dejan pasar todos los colores), o parcialmente transparentes (dejan pasar los colores, pero también muestran parte de sus propios colores). La cantidad de transparencia de un objeto viene definida por su valor de `alpha`. Este es el cuarto componente de un vector de color. Un valor de `alpha` de `0.0` supone que el objeto tiene transparencia completa, un `1.0` que no tiene transparencia y un `0.5` que el color del objeto consiste en un `50%` de su propio color y el `50%` del objeto que está detrás.
+
+Las texturas que se han usado consistían en 3 componentes de color, rojo, verde y azul, pero algunas tienen también una canal `alpha` embebido que contiene el valor del `alpha` para cada `texel`. Este valor informa exactamente que partes de la textura tienen transparencia y en qué cantidad.
+
+![Figure [res/020_001]: Transparencias](res/020_001.png)
+
+# Descartando fragmentos
+
+Algunas imágenes no tienen transparencia parcial, pero aun así quieren mostrar algo o nada basándose en el color de una textura. Para crear un árbol que esté en la distancia quizás no valga la pena malgastar una geometría compleja, con un `quad` 2D sobre el que se pinta una textura probablemente sea suficiente. Pero un árbol no tiene la forma exacta de un cuadrado 2D, así que solo se quieren mostrar algunas partes de la textura del árbol y descartar otras.
+
+![Figure [res/020_002]: Textura de un árbol](res/020_002.png)
+
+Esta textura de un árbol es opaca (`alpha` de 1.0) o completamente transparente (`alpha` de 0.0), no hay término medio. Cuando se añade un árbol en escena no se quiere mostrar una imagen cuadrada del árbol, si no mostrar solo la parte del árbol y ver a través del resto de la imagen. Hay que descartar los fragmentos que tienen transparencia en la textura, sin almacenar el fragmento en el buffer de color.
+
+Para cargar una textura transparente se sigue el método habitual, pero ahora hay que decirle a *OpenGL* que ahora el formato de la textura incluye un canal `alpha` (`GL_RGBA`) al subir la textura.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, _width, _height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [alpha]: Subir textura con canal `alpha`]
+
+En el shader de fragmentos hay que tener cuidado de usar los 4 valores de la textura al samplearla.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+
+out vec4 FragColor;
+in vec2 uv;
+uniform sampler2D texture;
+
+void main() {
+	vec4 texColor = texture(texture, uv);
+	FragColor = texColor;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [frag]: Shader de fragmentos sampleando un `vec4`]
+
+Ahora se crea un `quad` y se pinta la textura sobre él.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+s_blend.use();
+s_blend.set("proj", proj);
+s_blend.set("view", view);
+model = glm::mat4(1.0f);
+model = glm::translate(model, glm::vec3(0.0f, 0.0f, 2.0f));
+s_blend.set("model", model);
+t_tree.use(s_blend, "texture1", 0);
+
+quad.render();
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [quad_render]: Pintar un `quad` con la textura del árbol]
+
+![Figure [res/020_003]: `Quad` con el árbol pintado en la escena](res/020_003.png)
+
+*OpenGL* por defecto no sabe qué hacer con los valores de `alpha`, ni cuando descartarlos, por eso se ve el recuadro completo de la textura. Hay que hacerlo manualmente. `GLSL` tiene el comando `discard` que asegura que el fragmento no será procesado y no acabará en el buffer de color. En el shader de fragmentos se verifica el valor de `alpha` del `texel` de la textura y por debajo de un umbral se descarta el fragmento procesado.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+
+out vec4 FragColor;
+in vec2 uv;
+uniform sampler2D texture;
+
+void main() {
+	vec4 texColor = texture(texture, uv);
+
+	if (texColor.a <= 0.1) {
+		discard;
+	}
+
+	FragColor = texColor;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [discard]: Descartar un fragmento con un umbral de `alpha` al 10%]
+
+![Figure [res/020_004]: `Quad` con el árbol pintado en la escena descartando fragmentos](res/020_004.png)
+
+Al usar texturas con alpha se debe usar el método de wrapping a `GL_CLAMP_TO_EDGE` para evitar ver un borde semitransparente producto de la interpolación del borde superior con el inferior si se usa un `GL_REPEAT`.
+
+# Blending
+
+Descartar fragmentos provee la flexibilidad de poder pintar objetos semitransparentes, pero en el árbol, puesto que en los bordes y entre las hojas tiene valores de `alpha` semitransparentes, el pintado no acaba de funcionar, hay que mezclar esos colores con los objetos de detrás mejor que descartar fragmentos enteros.
+
+Hay que habilitar el `blending` haciendo una llamada a `glEnable`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glEnable(GL_BLEND);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [enable]: Habilitar el `blending`]
+
+El mezclado de colores en *OpenGL* se realiza con la siguiente ecuación:
+
+\begin{equation}
+C_{result} = C_{source} \cdot F_{source} + C_{destination} \cdot F_{destination}
+\end{equation}
+
+Donde $C_{source}$ es el color que se lee de la textura, $C_{destination}$ es el color que se está almacenando en el buffer de color, $F_{source}$ es el factor de origen y determina el impacto del valor del `alpha` en el color de origen, $F_{destination}$ es el factor de destino y determina el impacto del valor del `alpha` en el color de destino.
+
+Una vez que el shader de fragmentos se ha ejecutado y todos los tests se han pasado, esta ecuación se ejecuta sobre la salida del color del fragmento y con lo que estuviera previamente en el buffer de color. Los colores de origen y destino se determinan automáticamente, pero los factores de origen y destino se pueden configurar.
+
+![Figure [res/020_005]: Cuadrado Rojo y Verde (con `alpha`)](res/020_005.png)
+
+Se tienen dos cuadrados donde se quiere pintar el cuadrado verde semitransparente sobre el cuadrado rojo. El cuadrado rojo será el color de destino (el primero en el buffer de color) y se pinta el cuadrado verde sobre el rojo. Hay que multiplicar el cuadrado verde con su valor de `alpha`, así que hay que poner el factor de origen igual al valor de `alpha` del color de origen (`0.6` en el ejemplo). Entonces el cuadrado de destino tiene que tener una contribución al color igual al resto de ese valor `alpha`. Si el cuadrado verde contribuye con un `60%` al color final, el cuadrado rojo debería contribuir con un `40%` del valor, es decir, `1.0 – 0.6`. Así que se pone el factor de destino a uno menos el valor de `alpha` del color de origen.
+
+\begin{equation}
+C_{result} = (0.0, 1.0, 0.0, 0.6) \cdot 0.6 + (1.0, 0.0, 0.0, 1.0) \cdot (1.0 - 0.6)
+\end{equation}
+
+El resultado de combinar los dos cuadrados contiene un `60%` verde y un `40%`.
+
+![Figure [res/020_006]: Blending de los dos cuadrados](res/020_006.png)
+
+El color resultante se almacena en el buffer de color, reemplazando al color que estuviera antes.
+
+Para determinar el factor de `blending` se recurre a la función `glBlendFunc`, que espera dos parámetros, el factor de origen y el factor de destino.
+
+Opción | Valor
+-------|-------
+GL_ZERO | Factor es 0
+GL_ONE | Factor es 1
+GL_SRC_COLOR | Factor es igual al color de origen
+GL_ONE_MINUS_SRC_COLOR | Factor es igual a 1 menos el color de origen
+GL_DST_COLOR | Factor es igual al color de destino
+GL_ONE_MINUS_DST_COLOR | Factor es igual a 1 menos el color de destino
+GL_SRC_ALPHA | Factor es igual al alpha de origen
+GL_ONE_MINUS_SRC_ALPHA | Factor es igual a 1 menos el alpha de origen
+GL_DST_ALPHA | Factor es igual al alpha de destino
+GL_ONE_MINUS_DST_ALPHA | Factor es igual a 1 menos el alpha de destino
+GL_CONSTANT_COLOR | Factor es igual a un color constante
+GL_ONE_MINUS_CONSTANT_COLOR | Factor es igual a 1 menos un color constante
+GL_CONSTANT_ALPHA | Factor es igual a un alpha constante
+GL_ONE_MINUS_CONSTANT_ALPHA | Factor es igual a 1 menos un alpha constante
+[Table [factors]: Factores de Blending]
+
+Para determinar los valores de color y `alpha` constantes en caso de usarlos como factor se hace uso de la función `glBlendColor`.
+
+Para conseguir el resultado en el ejemplo de los cuadrados rojo y verde, se coge el `alpha` del origen y uno menos `alpha` del destino.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [func]: Factores de `blending`]
+
+También se pueden poner diferentes opciones de `blending` para el `RGB` y el canal `alpha` individualmente con `glBlendFuncSeparate`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ZERO);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [func_sep]: Factores de `blending` por separado]
+
+Esto pondrá los componentes `RGB` como en el ejemplo anterior, pero dejará el `alpha` resultante solo influenciado por el `alpha` del origen.
+
+*OpenGL* incluso permite el cambiar el operador en la ecuación entre el origen y el destino. Por defecto se suman, pero también se podrían restar. Con la función `glBlendEquation`, se pueden permitir 3 opciones.
+
+Opción | Valor
+-------|-------
+GL_FUNC_ADD | Se suman ambos componentes
+GL_FUNC_SUBSTRACT | Se restan ambos componentes
+GL_FUNC_REVERSE_SUBSTRACT | Se restan ambos componentes, pero en orden inverso
+[Table [ops]: Operadores de Blending]
+
+Para la escena con el árbol se ponen los factores de la función de `blending` y se activa.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glEnable(GL_BLEND);
+glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [tree_blend]: Configuración de `blending`]
+
+En el shader de fragmentos ahora simplemente se samplea la textura y se devuelven los 4 componentes del `texel` sampleado, incluyendo el canal `alpha`, que ya tratará correctamente el `blending` según se ha configurado.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+
+out vec4 FragColor;
+in vec2 uv;
+uniform sampler2D texture;
+
+void main() {
+	FragColor = texture(texture, uv);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [frag_blend]: Shader de fragmentos sampleando con `blending`]
+
+![Figure [res/020_007]: `Quad` con el árbol pintado en la escena con `blending`](res/020_007.png)
+
+Solo resta tener cuidado con el orden de pintado, cuando hay objetos transparentes en la escena siempre hay que pintarlos en orden. Primero se pintan los objetos opacos, a continuación, se deben ordenar todos los objetos transparentes en función de la distancia a la cámara, y se pintan los objetos transparentes, primero los más lejanos y luego los más cercanos, para que el `blending` funcione correctamente.
+
+![Figure [res/020_008]: Combinaciones de factores de `blending`](res/020_008.png)
+
+# Ejercicios
+
+- Crear una escena con un suelo, varios cubos de madera (buscar textura) y varios trozos de hierba delante de los cubos con la textura adjunta, usando `blending`
+- Modelo de iluminación `Blinn`, crear una escena con un suelo y cuatro `quads` perpendiculares alineados, uno detrás de otro. Uno de ellos usa mapas difusos y speculares para pintarse solido. Los otros tres se pintan de un color plano, uno rojo, otro verde y otro azul, y cada uno con un grado de transparencia distinto
+- Con la escena anterior, poner el `quad` solido más alejado, y los `quads` translucidos delante que actúen como un cristal de color
+- Con la escena anterior, añadir dos `quads` sólidos, uno más cercano que el resto, y otro entre los quads de colores. De manera que los `quads` de color actúen correctamente como un cristal de color
+
+<link rel="stylesheet" href="res/md/viu.css">
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'long'};</script>
+<!-- Markdeep: --><script src="res/md/markdeep.min.js?" charset="utf-8"></script>

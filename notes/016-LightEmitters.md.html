@@ -1,0 +1,407 @@
+<meta charset="utf-8">
+**60GIIN - 016 - Emisores de luz**
+    <small>©2026 VIU - 60GIIN Programación Gráfica - Iván Fuertes</small>
+
+# Introducción
+
+Toda la iluminación realizada hasta ahora provenía de un solo origen, que era un punto en el espacio. Esto suele dar buenos resultados, pero en el mundo real hay muchos tipos de luz que actúan de diferente manera cada una. Una fuente de luz que emite luz hacia los objetos es un emisor de luz.
+
+# Directional Light
+
+Cuando una fuente de luz está lejos, los rayos de luz que provienen de esta fuente están casi paralelos unos a otros. Parece que los rayos vienen en la misma dirección, independientemente de donde esté el objeto o el espectador. Cuando una fuente de luz está modelada para estar infinitamente lejos se le llama luz direccional puesto que todos sus rayos tienen la misma dirección, es independiente de la localización de la fuente de luz.
+
+Un buen ejemplo de una fuente de luz direccional es el sol tal como lo conocemos. El sol no está infinitamente lejos de nosotros, pero está tan lejos que se puede percibir así. Todos los rayos de sol están modelados como rayos de luz paralelos.
+
+![Figure [res/016_001]: Luz direccional, rayos paralelos](res/016_001.png)
+
+Puesto que todos los rayos de luz son paralelos, no importa como está cada objeto relacionado con la posición de la fuente de luz, puesto que la dirección de la luz es la misma para todos los objetos en la escena. Y puesto que el vector con la dirección de la luz es el mismo, los cálculos de la iluminación serán similares para cada objeto en la escena.
+
+Se puede modelar una luz direccional definiendo un vector con la dirección de la luz en lugar de su posición. Los cálculos en el shader se mantienen idénticos, salvo que ahora se usa directamente la dirección de la luz en lugar de calcularla a través de la posición de la luz y la posición del fragmento.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+struct Light {
+    vec3 direction;
+
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+};
+
+uniform Light light;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [lightdir_frag]: Dirección de la luz]
+
+Y a la hora de calcular la dirección de la luz, se niega el vector dirección. Los cálculos de iluminación esperan que la dirección de la luz sea un vector desde el fragmento hacia la fuente de luz, pero normalmente se suele preferir especificar una luz direccional como una dirección global apuntando desde la fuente de luz. Por eso se niega el vector global de la luz direccional para cambiar su dirección, hay que asegurarse de normalizarlo puesto que puede llegar como una dirección que no sea un vector unitario. El vector dirección resultante se usa de manera habitual a la hora de hacer los cálculos de los componentes difuso y specular.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+vec3 lightDir = normalize(-light.direction);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [lightdir_norm]: Dirección de la luz normalizada y negada]
+
+Para demostrar de manera clara que el efecto de una luz direccional es el mismo para múltiples objetos, se crea una escena con un suelo y 8 cubos, uno situado en cada esquina del suelo.
+
+Hay que especificar la dirección de la luz desde la CPU, simulando una fuente de luz en la parte superior de la escena, cuyos rayos caen hacia abajo y con cierta inclinación.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+shader.set("light.direction", -0.2f, -1.0f, -0.3f);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [lightdir_set]: Subir la dirección de la luz direccional]
+
+![Figure [res/016_002]: Escena pintada con luz direccional](res/016_002.png)
+
+# Point Light
+
+Las luces direccionales funcionan bien como luces globales que iluminan toda la escena, pero aparte de eso, se suelen necesitar muchas luces puntuales dispersas por la escena. Un punto de luz (`point light`) es una fuente de luz con una posición en algún sitio del mundo que ilumina en todas las direcciones y los rayos se desvanecen con la distancia. Tal como bombillas o antorchas.
+
+![Figure [res/016_003]: Punto de Luz](res/016_003.png)
+
+En las secciones anteriores se trabajaba con un punto de luz simplificado. Se tenía una fuente de luz en una posición determinada que dispersaba luz en todas las direcciones desde su posición. Sin embargo, la fuente de luz simulaba rayos de luz que nunca se desvanecían, simulando que la fuente de luz era demasiado fuerte. En la mayoría de las simulaciones 3D se quiere simular una fuente de luz que solo ilumina un área determinada cercana a la fuente de luz y no a toda la escena.
+
+## Atenuación
+
+A reducir la intensidad de la luz, de acuerdo a la distancia recorrida por el rayo de luz, se le llama atenuación. Una manera de reducir la intensidad de la luz en relación a la distancia es simplemente usar una ecuación lineal. Dicha ecuación reduciría linealmente la intensidad de la luz con la distancia asegurando que los objetos lejanos son menos brillantes. Sin embargo, esa ecuación lineal tiende a parecer falsa. En el mundo real, las luces son generalmente muy brillantes en distancias cortas, pero el brillo disminuye rápidamente al principio y el resto de la intensidad de la luz disminuye lentamente con la distancia. Para eso se necesita una formula distinta para reducir la intensidad de la luz.
+
+\begin{equation}
+F_{att} = \frac{1.0}{K_c + K_l \cdot d + K_q \cdot d^2}
+\end{equation}
+
+Esta fórmula calcula un valor de atenuación basado en la distancia del fragmento a la fuente de luz que luego se multiplicará al vector de intensidad de la luz.
+
+Aquí $d$ representa la distancia desde el fragmento a la fuente de luz. Entonces para calcular el valor de atenuación se definen 3 términos configurables, un término constante $K_c$, un término lineal $K_l$ y un término cuadrático $K_q$.
+
+- El termino constante se suele mantener a 1.0, para asegurar que el denominador resultante nunca sea menor que 1, puesto que de otra manera aumentaría la intensidad con determinadas distancias, que no es el efecto buscado.
+
+- El termino lineal se multiplica por la distancia, lo que reduce la intensidad de manera lineal.
+-
+- El termino cuadrático se multiplica por el cuadrado de la distancia y determina un decremento cuadrático de la intensidad para la fuente de luz. Este es menos significativo comparado con el termino lineal cuando la distancia es corta, pero es mucho mayor que el termino lineal cuando la distancia crece.
+
+Gracias al termino cuadrático la luz disminuye mayormente de manera lineal hasta que la distancia es lo suficientemente grande para que el termino cuadrático sobrepase al termino lineal, y entonces la intensidad de la luz disminuye mucho más rápido. El efecto resultante es que la luz es muy intensa en un rango cercano, pero pierde rápidamente su brillo con la distancia y pierde su brillo a un ritmo mucho más lento.
+
+![Figure [res/016_004]: Atenuación, intensidad de la luz sobre la distancia](res/016_004.png)
+
+Determinar los valores correctos para los tres términos depende de muchos factores, el entorno, la distancia que se quiere que cubra la luz, el tipo de luz,... En muchos casos, es simplemente una cuestión de experiencia y de ajustar los valores.
+
+Distancia | Constante | Lineal | Cuadrática
+----------|-----------|--------|-----------
+ 7 | 1.0 | 0.7 | 1.8
+ 13 | 1.0 | 0.35 | 0.44
+ 20 | 1.0 | 0.22 | 0.20
+ 32 | 1.0 | 0.14 | 0.07
+ 50 | 1.0 | 0.09 | 0.032
+ 65 | 1.0 | 0.07 | 0.017
+ 100 | 1.0 | 0.045 | 0.0075
+ 160 | 1.0 | 0.027 | 0.0028
+ 200 | 1.0 | 0.022 | 0.0019
+ 325 | 1.0 | 0.014 | 0.0007
+ 600 | 1.0 | 0.007 | 0.0002
+ 3250 | 1.0 | 0.0014 | 0.000007
+[Table [att]: Tabla de valores de términos de atenuación]
+
+En Table [att] se muestra una serie de valores para estos términos para simular una fuente de luz realista que cubre una distancia específica. El termino constante se mantiene a `1.0` en todos los casos, el termino lineal suele ser bastante pequeño para cubrir distancias grandes y el termino cuadrático es aún más pequeño.
+
+Para implementar la atenuación se necesitan 3 valores extra en el shader de fragmentos, los términos constante, lineal y cuadrático de la formula. Se pueden guardar en el `struct Light` definido previamente como propiedades de la luz. Se vuelve a calcular la dirección de la luz a partir de su posición al contrario de cómo se hacía con las luces direccionales.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+struct Light {
+  vec3 position;
+
+  vec3 ambient;
+  vec3 diffuse;
+  vec3 specular;
+
+  float constant;
+  float linear;
+  float quadratic;
+};
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [att_frag]: Valores de atenuación de la luz en el shader de fragmentos]
+
+Y se le da valor a los uniforms de los términos desde CPU. Se quiere cubrir una distancia de 50, así que se usan los valores apropiados.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+s_phong.set("light.constant", 1.0f);
+s_phong.set("light.linear", 0.09f);
+s_phong.set("light.quadratic", 0.032f);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [att_frag]: Valores de atenuación de la luz en el shader de fragmentos]
+
+Implementar la atenuación en el shader de fragmentos es bastante directo, se calcula el valor basándose en la formula y se multiplica este valor por los componentes ambiente, difuso y specular. Se necesita la distancia del fragmento a la fuente de luz, mediante la función longitud del vector entre el fragmento y la fuente de luz.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+float distance = length(light.position - fragPos);
+float attenuation = 1.0 / (light.constant + light.linear * distance +
+                    light.quadratic * (distance * distance));
+
+vec3 phong = (ambient + diffuse + specular) * attenuation;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [att_phong]: Atenuación calculada en el shader de fragmentos]
+
+Y por último se incluye este valor de atenuación en los cálculos de iluminación multiplicándolo por los valores de ambiente, difuso y specular. Se puede dejar fuera de la atenuación el valor ambiente, para que no disminuya con la distancia, pero si usa más de una fuente de luz el componente ambiente de cada uno se acumulan, y en ese caso es mejor atenuar el ambiente también.
+
+Los cubos más cercanos a la cámara son los más brillantes, y los más lejanos no reciben nada de iluminación. Un punto de luz es una fuente de luz con una posición configurable y una atenuación aplicada a sus cálculos de iluminación.
+
+![Figure [res/016_005]: Escena pintada con una point light](res/016_005.png)
+
+# Spotlight
+
+Una spotlight (foco) es una fuente de luz que está localizada en algún punto en el entorno y, en lugar de lanzar rayos en todas las direcciones, solo los lanza en una dirección específica. El resultado es que solo los objetos en un cierto radio en la dirección de la spotlight son iluminados y el resto se mantiene oscuro. Un buen ejemplo puede ser la farola de una calle o una linterna.
+
+Una spotlight se representa por una posición en el mundo, una dirección y un ángulo de corte que especifica el radio del cono de luz. Para cada fragmento se calcula si está dentro de la dirección de la luz (dentro del cono) y si es así se ilumina el fragmento.
+
+![Figure [res/016_006]: Cono de luz de una spotlight](res/016_006.png)
+
+`Lightdir` es el vector apuntando desde el fragmento a la fuente de luz, `Spotdir` es la dirección a la que la luz está apuntando, $\phi$ es el ángulo de corte que determina el radio de la luz (cualquier cosa fuera de ese radio no está iluminado), $\theta$ es el ángulo entre `Lightdir` y `Spotdir`. El valor de $\theta$ debería ser menor que el de $\phi$ para que el fragmento estuviera dentro de la luz.
+
+Lo que se necesita hacer es, calcular el producto escalar (devuelve el coseno del ángulo entre dos vectores unitarios) entre los vectores `LightDir` y `SpotDir` y compararlo con el ángulo de corte $\phi$.
+
+Primero se necesitan en el shader de fragmentos los vectores de posición y de dirección de la fuente de luz y el ángulo de corte.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+struct Light {
+  vec3 position;
+  vec3 direction;
+  float cutOff;
+
+  vec3 ambient;
+  vec3 diffuse;
+  vec3 specular;
+
+  float constant;
+  float linear;
+  float quadratic;
+};
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [point_struct]: `CutOff` en el shader de fragmentos]
+
+Y pasar esos valores al shader de manera apropiada.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+s_phong.set("light.direction", -1.0f, 0.0f, -1.0f);
+s_phong.set("light.cutOff", glm::cos(glm::radians(20.0f)));
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [point_uniforms]: Enviar `uniforms` al shader de fragmentos]
+
+No se determina el ángulo directamente, si no que se calcula el coseno basado en el ángulo y se pasa así al shader. Como en el shader se calcula el producto escalar entre `LightDir` y `SpotDir`, y ese producto devuelve un coseno, se puede comparar directamente y se ahorra el cálculo del coseno en la GPU, lo que siempre es una operación costosa.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+vec3 lightDir = normalize(light.position - fragPos);
+float theta = dot(lightDir, normalize(-light.direction));
+
+if (theta > light.cutOff) {
+    fragColor = vec4(phong, 1.0);
+} else {
+    fragColor = vec4(light.ambient * vec3(texture(material.diffuse, uv)), 1.0);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [point_phong]: Calcular el cono de luz]
+
+Primero se calcula dicho producto escalar entre `LightDir` y el vector dirección de la luz negado (para que los dos vectores apunten hacia la luz) y se normaliza. Si se está dentro del cono de luz se realizan los cálculos normales de iluminación, en caso contrario se aplica solo el componente ambiente.
+
+![Figure [res/016_007]: Escena pintada con una Spotlight](res/016_007.png)
+
+## Bordes suavizados
+
+El resultado final parece un poco falso, los bordes de la luz son demasiado duros. Cuando un fragmento se acerca al borde del cono de la spotlight est'a completamente apagado en lugar de hacerlo en disminución. Una spotlight realista debería reducir la luz gradualmente sobre sus bordes.
+
+Para crear el efecto de unos bordes suaves se va a simular que la spotlight tiene un cono interior y otro exterior. El cono interior sería el definido anteriormente, pero el exterior gradualmente debilitará la luz desde el interior hasta los bordes del exterior.
+
+Para crear un cono exterior se define otro valor de un coseno que representa el ángulo entre la dirección de la spotlight y el cono exterior (igual a su radio). Entonces, si un fragmento está entre los conos interior y exterior deberá calcular un valor de intensidad entre `1.0` y `0.0`. Si un fragmento está en el cono interior, su intensidad será `1.0`, y `0.0` si está fuera del cono exterior.
+
+Se puede calcular dicho valor usando la fórmula:
+
+\begin{equation}
+I = \frac{\theta - \gamma}{\epsilon}
+\end{equation}
+
+\begin{equation}
+\epsilon = \phi - \gamma
+\end{equation}
+
+$\epsilon$ es el coseno de la diferencia entre el cono interior $\phi$ y el cono exterior $\gamma$. El valor resultante es la intensidad de la spotlight en el fragmento. Básicamente se está interpolando entre el coseno del cono exterior y el del cono interior basándose en el valor de $\theta$.
+
+Puesto que ahora se tiene un valor de intensidad que puede ser negativo cuando está fuera del cono de la spotlight, y más alto de `1.0` dentro del cono interior, hay que limitar los valores. Y por tanto ya no es necesario el condicional dentro del shader. Simplemente se multiplican los valores de intensidad por los componentes difuso y specular de la luz.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+struct Light {
+  vec3 position;
+  vec3 direction;
+  float cutOff;
+  float outerCutOff;
+
+  vec3 ambient;
+  vec3 diffuse;
+  vec3 specular;
+
+  float constant;
+  float linear;
+  float quadratic;
+};
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [point_struct2]: `OuterCutOff` en el shader de fragmentos]
+
+Se le pasa el nuevo uniform al shader.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+s_phong.set("light.outerCutOff", glm::cos(glm::radians(25.0f)));
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [point_uniforms]: Enviar `uniform` al shader de fragmentos]
+
+Y para usarlo en el shader.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+float theta = dot(lightDir, normalize(-light.direction));
+float epsilon   = light.cutOff - light.outerCutOff;
+float intensity = clamp((theta - light.outerCutOff) / epsilon, 0.0, 1.0);
+
+vec3 phong = (ambient + (diffuse * intensity) + (specular * intensity)) * attenuation;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [point_phong]: Calcular el cono de luz con suavizado]
+
+La función clamp de *GLSL* limita los valores del primer parámetro entre `0.0` y `1.0`. Con esto se asegura que los valores de la intensidad nunca sobrepasaran el intervalo entre `0` y `1`.
+
+![Figure [res/016_008]: Escena pintada con una spotlight con bordes suavizados](res/016_008.png)
+
+# Multiples luces
+
+Para usar más de una fuente de luz en la escena hay que encapsular los cálculos de iluminación en funciones de *GLSL*. El código se enmaraña rápidamente cuando se quieren hacer cálculos complicados con múltiples luces con cada tipo de luz requiriendo diferentes cálculos. Si hubiera que hacer todo eso dentro del `main` del shader, el código se volvería pronto difícil de entender.
+Las funciones en *GLSL* son como funciones en `C`. Tienen un nombre, un tipo de retorno y reciben unos argumentos. Se declarará una función diferente para cada uno de los tipos de luces, direccionales, pointlights y spotlights.
+
+Cuando se usan múltiples luces en una escena se suele realizar de la siguiente manera, se tiene un único vector de color que representa el color de salida del fragmento. Para cada luz, se añade a ese vector su contribución al fragmento. Así, cada luz en la escena calculará su impacto individual al fragmento y contribuirá al color final.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+void main() {
+  vec3 norm = normalize(normal);
+  vec3 viewDir = normalize(viewPos - fragPos);
+
+  vec3 color = calcDirectionalLight(dirLight, norm, viewDir);
+
+  for (int i=0; i < NUMBER_POINT_LIGHTS; ++i)
+    color += calcPointLight(pointLights[i], norm, fragPos, viewDir);
+
+  for (int i=0; i < NUMBER_SPOT_LIGHTS; ++i)
+    color += calcSpotLight(spotLights[i], norm, fragPos, viewDir);
+
+  fragColor = vec4(color, 1.0);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [main_lights]: Función `main` del shader de fragmentos para multiples luces]
+
+## Directional Lights
+
+Se define una función en el shader de fragmentos que calcula la contribución que tiene una luz direccional en el correspondiente fragmento, una función que toma una serie de parámetros y devuelve el color de la iluminación direccional.
+
+Hay que determinar las variables mínimas que se requieren para una fuente de luz direccional. Se pueden almacenar en una estructura y definir como un `uniform`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+struct DirLight {
+  vec3 direction;
+
+  vec3 ambient;
+  vec3 diffuse;
+  vec3 specular;
+};
+
+uniform DirLight dirLight;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [dirlight_struct]: `Struct` para una luz direccional]
+
+Entonces se le puede pasar la variable `dirLight` a una función para calcular la contribución de dicha luz direccional, donde se encapsulan los cálculos de iluminación pertinentes.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+vec3 calcDirectionalLight(DirLight light, vec3 normal, vec3 viewDir) {
+  vec3 lightDir = normalize(-light.direction);
+  float diff = max(dot(normal, lightDir), 0.0);
+
+  vec3 reflectDir = reflect(-lightDir, normal);
+  float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+
+  vec3 ambient = light.ambient  * vec3(texture(material.diffuse, texCoords));
+  vec3 diffuse = light.diffuse  * diff * vec3(texture(material.diffuse, texCoords));
+  vec3 specular = light.specular * spec * vec3(texture(material.specular, texCoords));
+
+  return (ambient + diffuse + specular);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [dirlight_func]: Función para una luz direccional]
+
+## Point Lights
+
+Como en la luz direccional, se quiere definir una función que calcula la contribución de un punto de luz tiene sobre un fragmento. Se crea una estructura que especifica todas las variables requeridas para un punto de luz.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+struct PointLight {
+  vec3 position;
+
+  float constant;
+  float linear;
+  float quadratic;
+
+  vec3 ambient;
+  vec3 diffuse;
+  vec3 specular;
+};
+
+#define NUMBER_POINT_LIGHTS 2
+uniform PointLight pointLights[NUMBER_POINT_LIGHTS];
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [pointlight_struct]: `Struct` para un point light]
+
+Se ha usado una directiva de pre procesamiento para definir el número máximo de puntos de luz que se quieren tener en la escena. Se usa ese valor para crear un `array` de pointLights. Los arrays en *GLSL* son como los de `C`, se pueden crear usando `[]`. Ahora se tienen 4 `structs` PointLight para rellenar con datos.
+
+Se le pasa todos los datos necesarios a una función para calcular la contribución de un punto de luz específico al fragmento.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+vec3 calcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir) {
+  vec3 lightDir = normalize(light.position - fragPos);
+  float diff = max(dot(normal, lightDir), 0.0);
+
+  vec3 reflectDir = reflect(-lightDir, normal);
+  float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+
+  float distance = length(light.position - fragPos);
+  float attenuation = 1.0 / (light.constant + light.linear * distance +
+  			              light.quadratic * (distance * distance));
+
+  vec3 ambient = light.ambient * vec3(texture(material.diffuse, texCoords));
+  vec3 diffuse = light.diffuse * diff * vec3(texture(material.diffuse, texCoords));
+  vec3 specular = light.specular * spec * vec3(texture(material.specular, texCoords));
+
+  return (ambient + diffuse + specular) * attenuation;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [pointlight_func]: Función para un point light]
+
+## Spotlights
+
+La funcionalidad para las spotlights se deja como ejercicio.
+
+## Todo junto
+
+Darle valor a los `uniforms` para todos los tipos de luz es algo que ya se ha hecho con anterioridad, nada nuevo. El único problema puede venir a la hora de saber cómo darle valor a un `uniform` que ahora es un `array` de estructuras de luces. Se hace exactamente igual, solo que ahora hay que definir el índice apropiado dentro del `array`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+s_phong.set("pointLights[0].position", 0.7f, 0.2f, 2.0f);
+s_phong.set("pointLights[0].ambient", 0.05f, 0.05f, 0.05f);
+s_phong.set("pointLights[0].diffuse", 0.5f, 0.5f, 0.5f);
+s_phong.set("pointLights[0].specular", 1.0f, 1.0f, 1.0f);
+s_phong.set("pointLights[0].constant", 1.0f);
+s_phong.set("pointLights[0].linear", 0.09f);
+s_phong.set("pointLights[0].quadratic", 0.032f);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [uniforms]: Subir valores de los `uniforms` para las luces en un `array`]
+
+Aquí se indexa el primer `struct` `PointLight` dentro del `array` de pointLights, y se les da valor a sus variables. Esto significa que hay que manualmente darle los valores a todos los `uniforms` de cada uno de los tipos de luz distintos que se tienen en la escena, lo cual puede ser un poco tedioso. Se podría realizar una abstracción definiendo una clase `PointLight` que subiera esos `uniforms` por sí misma, pero al final hay que pasárselos al shader de esta manera.
+Tampoco hay que olvidar que se necesita definir un vector posición para cada una de las PointLights que están distribuidas por la escena.
+
+![Figure [res/016_009]: Escena con una luz direccional, dos point lights emitiendo luz roja y dos spot lights](res/016_009.png)
+
+# Ejercicios
+
+- Pintar una tetera sobre un plano, una point light girando alrededor del eje Y, usando el modelo Blinn Phong
+- Implementar un nuevo tipo de luz, FlashLight o Linterna, que funcione como una SpotLight (conos suavizados), pero que se mueva con la cámara y siempre ilumine hacia adelante. Como si el personaje de un juego llevara una linterna siempre apuntando hacia adelante
+- Implementar el sistema de multiples luces, ahora incorporando también varias SpotLights a la escena de prueba
+- En la escena del punto 1, pintarla con una luz direccional, 2 point lights y 2 spotlights. Pintar una esfera para cada luz en la posición de cada una de ellas. Y hacer que cada luz emita un color/propiedades distinta
+
+<link rel="stylesheet" href="res/md/viu.css">
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'long'};</script>
+<!-- Markdeep: --><script src="res/md/markdeep.min.js?" charset="utf-8"></script>

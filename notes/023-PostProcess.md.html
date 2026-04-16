@@ -1,0 +1,164 @@
+<meta charset="utf-8">
+**60GIIN - 023 - PostProcess**
+    <small>©2026 VIU - 60GIIN Programación Gráfica - Iván Fuertes</small>
+
+# Introducción
+
+Mediante el uso de `framebuffers` y la técnica de pintado fuera de pantalla (`offscreen rendering`) se pueden crear una serie de interesantes efectos manipulando los datos de textura antes de pintar al `quad` final a pantalla completa. Se va a ver la creación de algunos de los más populares efectos de postprocesado.
+
+Se parte de una escena que se ha iluminado con una luz roja.
+
+![Figure [res/023_001]: Escena pintada sobre un `quad`](res/023_001.png)
+
+# Inversión
+
+Se tiene acceso a cada uno de los colores de la salida de render del primer paso del `offscreen rendering`, es sencillo devolver el color inverso de cada uno de ellos en el shader de fragmentos. Se samplea el color de la textura y se invierte restándoselo a 1.0.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+
+out vec4 FragColor;
+in vec2 uv;
+uniform sampler2D screenTexture;
+
+void main() {
+    FragColor = vec4(vec3(1.0 - texture(screenTexture, uv)), 1.0);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [invert]: Efecto de inversión de colores]
+
+![Figure [res/023_002]: Escena pintada con el postproceso de inversión](res/023_002.png)
+
+# Escala de grises
+
+Otro efecto sencillo es eliminar todos los colores de la escena excepto el blanco, gris y negro, convirtiendo la imagen a escala de grises. El ojo humano tiende a ser más sensible a los colores verdes, y menos a los azules, por eso se suele usar un sistema de pesado de canales para conseguir unos efectos más realistas.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+void main() {
+    color = texture(screenTexture, uv);
+    float average = 0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b;
+    FragColor = vec4(average, average, average, 1.0);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [grey]: Efecto de escala de grises]
+
+![Figure [res/023_003]: Escena pintada con el postproceso de escala de grises](res/023_003.png)
+
+# Efectos de Kernel
+
+Otra ventaja de hacer postprocesos en una sola textura es que se pueden samplear los valores de color de otras partes de la misma. Se puede coger una pequeña área alrededor de la coordenada de textura actual y samplear varios valores de textura alrededor, y se pueden crear efectos combinándolos de maneras creativas.
+
+Un `kernel` (`convolution matrix`) es una pequeña matriz centrada en el píxel actual que multiplica los valores de los píxeles de alrededor por sus valores de `kernel` y los suma todos para formar un solo valor. Básicamente se está añadiendo un pequeño `offset` a las coordenadas de textura en las direcciones de alrededor del píxel actual y se combinan los resultados basándose en el `kernel`.
+
+\begin{bmatrix}
+-1 & -1 & -1\\
+-1 & 9 & -1\\
+-1 & -1 & -1
+\end{bmatrix}
+
+Este `kernel` coge los 8 valores de alrededor, los multiplica por -1, y el píxel actual lo multiplica por 9, y luego los suma todos. La mayoría de `kernels` suelen sumar 1 si se suman todos los pesos. Si no suman 1 significa que el color resultante termina siendo más brillante u oscuro que el valor de la textura original.
+
+Los `kernels` son una herramienta muy útil para los postprocesos, puesto que son muy fáciles de usar y hay cientos de ejemplos disponibles online.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+vec2 offsets[9] = vec2[](
+vec2(-offset, offset),  //top left
+vec2(0.0, offset),      //top center
+vec2(offset, offset),   //top right
+vec2(-offset, 0.0),     //center left
+vec2(0.0, 0.0),         //center
+vec2(offset, 0.0),      //center right
+vec2(-offset, -offset), //bottom left
+vec2(0.0, -offset),     //bottom center
+vec2(offset, -offset)   // bottom right
+);
+
+float kernel[9] = float[] (
+    -1, -1, -1,
+    -1, 9, -1,
+    -1, -1, -1
+);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [kernel]: `Kernel` ó `Convolution Matrix`]
+
+En el shader de fragmentos se crea un array de 9 `vec2` `offsets` para cada una de las coordenadas de textura de alrededor.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+  vec3 sampleTex[9];
+  for (int i = 0; i < 9; ++i) {
+    sampleTex[i] = vec3(texture(screenTexture, uv.st + offsets[i]));
+  }
+  vec3 color = vec3(0.0);
+  for (int i = 0; i < 9; ++i) {
+    color += sampleTex[i] * kernel[i];
+  }
+
+  FragColor = vec4(color, 1.0);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [calc_kernel]: Aplicar el `Kernel`]
+
+Se define el `kernel`, que en este caso es un `kernel` de afilado, que aumenta cada color sampleando alrededor. Por último, se suma cada `offset` a la coordenada de textura actual al samplear y se multiplican esos valores de textura por los valores de `kernel` y se suman.
+
+![Figure [res/023_004]: Escena pintada con el postproceso de `kernel sharpen`](res/023_004.png)
+
+# Blur
+
+Usando un kernel distinto se puede realizar un postproceso que haga borrosa la escena.
+
+\begin{equation}
+\begin{bmatrix}
+1 & 2 & 1\\
+2 & 4 & 2\\
+1 & 2 & 1
+\end{bmatrix} / 16
+\end{equation}
+
+Puesto que todos los valores suman 16, devolver los valores combinados de los colores sampleados resultaría en un color demasiado brillante, así que hay que dividir cada valor del `kernel` por 16.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+float kernel[9] = float[] (
+    1.0/16, 2.0/16, 1.0/16,
+    2.0/16, 4.0/16, 2.0/16,
+    1.0/16, 2.0/16, 1.0/16
+);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [blur]: `Kernel` para el efecto `blur`]
+
+El efecto `blur` es muy habitual en los juegos, se puede cambiar el valor del `blur` en función del tiempo o se puede usar para suavizar colores.
+
+![Figure [res/023_005]: Escena pintada con el postproceso de `kernel blur`](res/023_005.png)
+
+# Detección de bordes
+
+Aplicando el siguiente `Kernel` se pueden resaltar los bordes de los objetos, oscureciendo el resto, lo que puede resultar útil.
+
+\begin{equation}
+\begin{bmatrix}
+1 & 1 & 1\\
+1 & -8 & 1\\
+1 & 1 & 1
+\end{bmatrix} / 16
+\end{equation}
+
+Muchos de estos `kernels` están detrás de la mayoría de filtros de manipulación de imágenes de programas como `Photoshop`. Gracias a la habilidad de la tarjeta gráfica para procesar fragmentos con capacidades de paralelización extremas, se pueden manipular imágenes a nivel de píxel en tiempo real con bastante sencillez. Por eso las herramientas de edición de imagen suelen usar las GPUs cada vez más para el procesado de imágenes.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+float kernel[9] = float[] (
+    1, 1, 1,
+    1, -8, 1,
+    1, 1, 1
+);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [edge]: `Kernel` para el efecto `edge detection`]
+
+![Figure [res/023_006]: Escena pintada con el postproceso de kernel `edge detection`](res/023_006.png)
+
+# Ejercicios
+
+- Usando una escena 3D cualquiera, implementar el postproceso de Sobel (https://en.wikipedia.org/wiki/Sobel_operator).
+- Usando una escena 3D cualquiera, implementar el postproceso de Blur Gaussiano en dos pasadas (https://en.wikipedia.org/wiki/Gaussian_blur  ->  seccion implementacion).
+
+<link rel="stylesheet" href="res/md/viu.css">
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'long'};</script>
+<!-- Markdeep: --><script src="res/md/markdeep.min.js?" charset="utf-8"></script>

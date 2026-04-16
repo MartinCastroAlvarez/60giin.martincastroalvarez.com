@@ -1,0 +1,271 @@
+<meta charset="utf-8">
+**60GIIN - 022 - Framebuffers**
+    <small>©2026 VIU - 60GIIN Programación Gráfica - Iván Fuertes</small>
+
+# Introducción
+
+Hasta ahora se han usado varios tipos de buffers de pantalla, un buffer de color para escribir los valores de color, uno de profundidad para almacenar la información sobre la profundidad y finalmente un buffer de `stencil` que permite descartar ciertos fragmentos basándose en alguna condición. La combinación de esos tres buffers se llama `framebuffer` y se almacena en algún sitio en memoria. *OpenGL* da la flexibilidad de definir `framebuffers` propios, por tanto, definir buffers de color, profundidad y `stencil` propios.
+
+Las operaciones de pintado hasta ahora se han hecho sobre los buffers de pintado adjuntos al `framebuffer` por defecto. Este es creado y configurado cuando se crea la ventana, `GLFW` se encarga de ello. Crear un `framebuffer` propio permite realizar ciertas operaciones y técnicas de pintado. Pintar una escena en un `framebuffer` distinto permite crear espejos o hacer efectos de postprocesado.
+
+# Crear un Framebuffer
+
+Como cualquier objeto de *OpenGL* se puede crear un `framebuffer` (`FBO`) usando la función `glGenFrameBuffers`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+uint32_t fbo;
+glGenFramebuffers(1, &fbo);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [gen_fbo]: Generar un `framebuffer`]
+
+Y su uso es el habitual, se enlaza como el `framebuffer` activo, se hacen operaciones sobre él, y luego se desenlaza.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [bind_fbo]: Enlazar un `framebuffer`]
+
+Enlazando al target `GL_FRAMEBUFFER` todas las lecturas y escrituras de `framebuffer` a partir de ese momento afectarán a este `framebuffer` en concreto. También se puede enlazar un `framebuffer` para operaciones específicas de lectura o escritura, enlazándolo al target `GL_READ_FRAMEBUFFER` y `GL_DRAW_FRAMEBUFFER` respectivamente. El `framebuffer` enlazado a `GL_READ_FRAMEBUFFER` es usado para las operaciones de lectura como `glReadPixels` y el `framebuffer` enlazado a `GL_WRITE_FRAMEBUFFER` es usado como destino para el pintado, borrado y otras operaciones de escritura. La mayoría de las veces se suele enlazar a ambos destinos con `GL_FRAMEBUFFER`.
+
+El `framebuffer` en este punto aún no está completo, para estarlo tienen que cumplirse los siguientes requisitos:
+
+- Hay que adjuntarle al menos un buffer (color, profundidad o stencil).
+- Tiene que haber al menos un buffer de color adjunto.
+- Todos los adjuntos deben estar completos (con la memoria reservada).
+- Cada buffer tiene que tener el mismo tamaño.
+
+Hay que crear entonces algún buffer adjunto para el `framebuffer` y enlazárselo. Una vez completados los requisitos se le puede preguntar al `framebuffer` si ya está completo llamando a `glCheckFramebufferStatus`, si lo está devolverá `GL_FRAMEBUFFER_COMPLETE` y ya se puede usar.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+    std::cout << "Error Framebuffer not complete" << std::endl;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [check_fbo]: Verificar `framebuffer` completo]
+
+Todas las operaciones de pintado siguientes se realizarán sobre el `framebuffer` actualmente enlazado. Y puesto que este `framebuffer` no es el `framebuffer` por defecto, los comandos de pintado no afectarán a la salida visual de la pantalla. Por eso a esta técnica se le llama pintado fuera de pantalla (`offscreen rendering`). Para asegurarse de que las operaciones de pintado acaban en la pantalla hay que volver a activar el `framebuffer` por defecto, enlazando el `target` `GL_FRAMEBUFFER` a `0`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glBindFramebuffer(GL_FRAMEBUFFER, 0);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [bind_fbo_main]: Enlazar el `framebuffer` por defecto]
+
+Al acabar no hay que olvidarse de eliminar el framebuffer.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glDeleteFramebuffers(1, &fbo);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [delete_fbo]: Eliminar `framebuffer`]
+
+Antes de ejecutar la verificación de la completitud del `framebuffer` hay que adjuntarle algunos buffers. Un adjunto es una localización de memoria que puede actuar como un buffer para el `framebuffer`. Cuando se crea un adjunto se pueden usar dos opciones, usar texturas u objetos `renderbuffer`.
+
+## Texturas adjuntas
+
+Cuando se adjunta una textura a un `framebuffer`, todos los comandos de pintado se escriben en la textura como si fuera un buffer normal de color, profundidad o `stencil`. La ventaja de usar una textura es que el resultado de las operaciones de pintado se almacena como una imagen de textura que se puede usar fácilmente en los shaders.
+
+Crear una textura para un `framebuffer` es casi idéntico a una textura normal.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+uint32_t textureColor;
+glGenTextures(1, &textureColor);
+glBindTexture(GL_TEXTURE_2D, textureColor);
+glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [create_text]: Crear textura adjunta]
+
+La diferencia principal es que se ponen las dimensiones iguales al tamaño de pantalla y se le pasa `NULL` como el parámetro de datos de la textura. Para esta textura, solo se está reservando memoria y no rellenándola. Eso se realizará en cuanto se empiece a pintar en el `framebuffer`. No importan demasiado los métodos de `wrapping` o `mipmapping` puesto que en la mayoría de los casos no serán necesarios.
+
+Si se quiere pintar la pantalla a una textura de un tamaño inferior habría que llamar a `glViewPort` otra vez, antes de pintar al `framebuffer` con las nuevas dimensiones de la textura, en caso contrario solo una parte de la pantalla acabaría pintada en la textura.
+
+Ahora que la textura ya se ha creado hay que adjuntársela al `framebuffer`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureColor, 0);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [attach_texture]: Adjuntar textura al `framebuffer`]
+
+El primer parámetro es el destino, `GL_FRAMEBUFFER` para que se lea y escriba. El segundo el tipo de adjunto que se va a usar, ahora un `GL_COLOR_ATTACHMENT0`, se puede adjuntar más de uno, por eso acaba en número. El tercer parámetro es el tipo de textura que se va adjuntar, el cuarto la textura que se quiere adjuntar, y por último el nivel de `mipmap`.
+
+Aparte de adjuntos de color se pueden adjuntar también texturas de profundidad o `stencil` al `fbo`. Para hacerlo hay que especificar que el tipo de adjunto es `GL_DEPTH_ATTACHMENT`. En ese caso el formato y el formato interno de la textura debe ser `GL_DEPTH_COMPONENT` para reflejar el formato de almacenamiento del buffer de profundidad. Para adjuntar un buffer de `stencil` se usa `GL_STENCIL_ATTACHMENT` como segundo argumento y se especifica el formato de la textura como `GL_STENCIL_INDEX`.
+
+También se puede adjuntar un buffer de profundidad y de `stencil` como una sola textura. En ese caso cada 32 bits de la textura corresponden a 24 bits de profundidad y 8 al `stencil`. Para hacerlo se usa el tipo `GL_DEPTH_STENCIL_ATTACHMENT` y se configura el formato de la textura para contener los valores combinados de profundidad y `stencil`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, width, height, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, NULL);
+glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, texture, 0);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [attach_texture_depth_stencil]: Adjuntar textura al `framebuffer` para `depth` y `stencil`]
+
+## Objetos RenderFramebuffer adjuntos
+
+Los objetos de `renderbuffer` se introdujeron en *OpenGL* posteriormente a las texturas como otro tipo posible de adjuntos a los `framebuffers`. Al igual que una imagen de textura, los objetos `renderbuffer` son un buffer (un array de bytes, enteros, pixels,...) Estos tienen la ventaja añadida de que sus datos se almacenan en el formato nativo de *OpenGL*, estando muy optimizados para el pintado fuera de pantalla a un `framebuffer`.
+
+Los `RBO` (`RenderBufferObjects`) almacenan sus datos directamente en su buffer sin ningún tipo de conversión a formatos específicos de textura, haciéndolos el medio de escritura más rápido. Sin embargo, estos suelen ser de solo escritura, así que no se puede leer de ellos fácilmente (como un acceso a textura).
+
+Puesto que sus datos ya están en el formato nativo son muy rápidos al escribir en ellos o simplemente copiando datos a otros buffers. Operaciones como cambio de buffers son muy rápidas al usar objetos `renderbuffer`. La función `glfwSwapBuffers` que se usa al final de cada iteración de pintado, se podría implementar con objetos `renderbuffer`, se escribe a una imagen de `renderbuffer`, y se intercambia por otra al otro lado, estos objetos son perfectos para estas operaciones.
+
+Crear un `renderbuffer` es sencillo.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+uint32_t rbo;
+glGenRenderbuffers(1, &rbo);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [gen_rbo]: Generar un `renderbuffer`]
+
+Y se enlaza al target correspondiente para empezar a usarlo.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [bind_rbo]: Enlazar un `renderbuffer`]
+
+Puesto que estos objetos suelen ser de solo escritura, son a menudo usados como adjuntos de profundidad y `stencil`, y de estos buffers no se necesita leer directamente sino usarlos para los tests de profundidad y `stencil`. Así que se adaptan perfectamente a este uso, se escribe sobre ellos y se usan para los tests. Cuando no se está sampleando (leyendo) directamente de un buffer, la elección debe ser un `renderbuffer`, puesto que está más optimizado.
+
+Crear un objeto `renderbuffer` para profundidad y `stencil` se hace llamando a `glRenderbufferStorage`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [create_rbo]: Crear un `renderbuffer` para `depth`]
+
+La diferencia con la manera de crear un objeto de textura es que estos están diseñados específicamente para ser usados como una imagen, y no como una textura, con su buffer de uso general. Se le pasa `GL_DEPTH24_STENCIL8` como formato interno, para tener 24 bits para el `depth` y 8 para el `stencil`.
+
+Solo queda adjuntar el objeto `renderbuffer` al `framebuffer`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [attach_rbo]: Adjuntar un `renderbuffer` al `framebuffer`]
+
+# Pintando a textura
+
+Se va a pintar una escena a una textura de color adjunta a un `framebuffer` y luego se va a pintar esa textura a un simple `quad` que ocupará toda la pantalla. El resultado final va a ser el mismo que si no se usará un `framebuffer`, pero esta vez todo se pinta finalmente sobre un `quad`.
+
+Lo primero es crear un `fbo` y enlazarlo.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+uint32_t fbo;
+glGenFramebuffers(1, &fbo);
+glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [gen_bind_fbo]: Crear y enlazar un `framebuffer`]
+
+A continuación, se crea una imagen textura que se adjunta como color al `fbo`. Las dimensiones son iguales a la ventana y se dejan sus datos sin inicializar.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+uint32_t textureColor;
+glGenTextures(1, &textureColor);
+glBindTexture(GL_TEXTURE_2D, textureColor);
+glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, Window::instance()->getWidth(), Window::instance()->getHeight(), 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+glBindTexture(GL_TEXTURE_2D, 0);
+ glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureColor, 0);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [create_attach_texture]: Crear y adjuntar una textura al `framebuffer`]
+
+También se quiere que *OpenGL* sea capaz de hacer el test de profundidad, así que hay que añadir un buffer adjunto de profundidad al `FBO`. Puesto que solo se va a estar sampleando del buffer de color y no del resto de buffers se puede crear un objeto `renderbuffer` para esto. Solo son una buena opción cuando no se va a leer de ellos.
+
+Se crea un `RBO` solo para profundidad con un `depth` de 24 bits, y se adjunta al resto del `framebuffer`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+uint32_t rbo;
+glGenRenderbuffers(1, &rbo);
+glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, Window::instance()->getWidth(), Window::instance()->getHeight());
+glBindRenderbuffer(GL_RENDERBUFFER, 0);
+glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rbo);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [create_attach_rbo]: Crear y adjuntar un `renderbuffer` al `framebuffer`]
+
+Finalmente se verifica que el `framebuffer` esté completo y listo para funcionar. Y asegurarse de desenlazar el `FBO`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+    std::cout << "Error Framebuffer not complete" << std::endl;
+}
+
+glBindFramebuffer(GL_FRAMEBUFFER, 0);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [check_fbo]: Verificar que el `framebuffer` está completo]
+
+Ahora lo que hay que hacer es pintar al `framebuffer` en lugar de al `framebuffer` por defecto, para eso solo hay que enlazar el `FBO` antes de pintar. Todos los comandos de pintado siguientes irán a parar al `framebuffer` enlazado. Todas las operaciones de profundidad y `stencil` leerán del `framebuffer` enlazado.
+
+Para pintar una la escena entonces:
+- Enlazar el nuevo `framebuffer`
+- Pintar la escena de la manera habitual
+- Enlazar al `framebuffer` por defecto
+- Pintar un `quad` que ocupe toda la pantalla usando el buffer de color del `framebuffer` como textura
+
+Para pintar el `quad` final se usa un conjunto de shaders nuevos, pero sin nada complicado, el `quad` ya está en coordenadas `NDC`, así que el shader de vértices es muy simple.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec2 aUv;
+layout (location = 2) in vec3 aNormal;
+
+out vec2 uv;
+
+void main() {
+  uv = aUv;
+  gl_Position = vec4(aPos, 1.0);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [vert]: Shader de vértices para pintar el `quad`]
+
+Y el de fragmentos será aún más sencillo, solo sampleará de una textura.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+
+out vec4 FragColor;
+in vec2 uv;
+uniform sampler2D screenTexture;
+void main() {
+    FragColor = texture(screenTexture, uv);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [frag]: Shader de fragmentos para pintar el `quad`]
+
+Para pintar entonces se hace algo así:
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+//first pass
+glEnable(GL_DEPTH_TEST);
+glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+DrawScene();
+
+//second pass
+glBindFramebuffer(GL_FRAMEBUFFER, 0);
+glDisable(GL_DEPTH_TEST);
+
+glClear(GL_COLOR_BUFFER_BIT);
+
+shader_fbo.use();
+
+glActiveTexture(GL_TEXTURE0);
+glBindTexture(GL_TEXTURE_2D, text_fbo);
+s_fbo.set("screenTexture", 0);
+
+quad.render();
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [render]: Pintar usando un `FBO`]
+
+Puesto que cada `framebuffer` tiene su propio conjunto de buffers, hay que limpiar cada uno de esos buffers con `glClear`. Al pintar el `quad` a pantalla completa, se deshabilita el testing de profundidad ya que no importa, se está pintando un `quad` simple.
+
+La escena se ve como siempre, pero si se pinta en `WireFrame`, se ve que al final solo se está pintando un `quad` que cubre toda la pantalla.
+
+![Figure [res/022_001]: Escena pintada sobre un `quad`, y con `wireframe`](res/022_001.png)
+
+# Ejercicios
+
+- Usando una escena 3D cualquiera, pintarla de manera normal desde el punto de vista de una cámara. Pero poner un panel en una esquina de la escena mostrando la misma escena desde el punto de vista de otra cámara fija.
+
+<link rel="stylesheet" href="res/md/viu.css">
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'long'};</script>
+<!-- Markdeep: --><script src="res/md/markdeep.min.js?" charset="utf-8"></script>

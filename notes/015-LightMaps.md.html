@@ -1,0 +1,108 @@
+<meta charset="utf-8">
+**60GIIN - 015 - Mapas de iluminación**
+    <small>©2026 VIU - 60GIIN Programación Gráfica - Iván Fuertes</small>
+
+# Introducción
+
+Cada objeto ahora tiene un material único que reacciona a la luz de manera única, de esta manera se le puede dar a cada objeto una apariencia única en comparación con otros objetos en una escena iluminada, pero no ofrece demasiada flexibilidad en la apariencia final de un objeto. Un objeto hasta ahora consistía de un único material, pero en la vida real, muy a menudo, un objeto está compuesto por varios materiales. Un monitor, por ejemplo, su marco es de un tipo de plástico, mientras que la pantalla suele ser de cristal o algún otro tipo de plástico que refleja la luz de manera distinta que su marco.
+
+El sistema de materiales propuesto hasta ahora puede funcionar para objetos simples, pero ahora se necesita extender introduciendo los mapas difusos y especulares. Eso va a permitir cambiar el difuso y el specular con mucha más precisión.
+
+# Mapas difusos
+
+Sería ideal si se pudiera controlar el color difuso para cada fragmento del objeto de manera individual, y eso se consigue a través de una textura. Ya se ha visto cómo usar una textura para aplicarla sobre un modelo 3D, ahora se va a usar para obtener el componente difuso del modelo de iluminación. Estas texturas se suelen llamar mapas difusos puesto que la textura representa todos los colores difusos del objeto.
+
+![Figure [res/015_001]: Mapa difuso](res/015_001.png)
+
+Usar un mapa difuso es exactamente igual que una textura en los ejemplos anteriores. Sin embargo, esta vez se va a guardar la textura en un `sampler` dentro del `struct` del material en el shader de fragmentos.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+struct Material {
+  sampler2D diffuse;
+  vec3 specular;
+  int shininess;
+};
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [diffuse_sampler]: Usar una textura para el componente difuso del material]
+
+Hay que tener en cuenta que `sampler2D` es un tipo opaco, quiere decir que no se pueden instanciar de manera directa, solo se pueden definir como `uniforms`.
+
+Hay que acordarse de cargar la textura con el mapa difuso de disco, usar el atributo de vértice para las `uv`s correctamente, actualizar `VAO`s y `strides`, enlazar la textura a la unidad de textura al pintar, pasar la coordenada de textura del shader de vértices al de fragmentos...
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+vec3 albedo = vec3(texture(material.diffuse, uv));
+
+vec3 ambient = albedo * light.ambient;
+
+vec3 norm = normalize(normal);
+vec3 lightDir = normalize(light.position - fragPos);
+float diff = max(dot(norm, lightDir), 0.0);
+vec3 diffuse = diff * albedo * light.diffuse;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [diffuse_phong]: Componentes ambient y difusos usando albedo]
+
+Una vez se tiene la variable `uv` en el shader de fragmentos desde el shader de vértices, se usa para samplear la textura. Ahora se calcula el ambient multiplicando el color de la luz en el componente ambient por el color sampleado de la textura. Con el difuso es parecido, se multiplica el color de la luz difusa, por los valores obtenidos para el componente difuso por el modelo de iluminación, por el color sampleado de la textura.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+s_phong.set("material.diffuse", 0);
+
+glActiveTexture(GL_TEXTURE0);
+glBindTexture(GL_TEXTURE_2D, text_diff)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [diffuse_set]: Unidad de textura correspondiente y su `uniform`]
+
+Solo falta subir al `uniform` la unidad de textura donde va a estar enlazada la textura, en este caso en 0.
+
+![Figure [res/015_002]: Modelo de iluminación con mapa difuso](res/015_002.png)
+
+# Mapas speculares
+
+Ahora que se ve el objeto con la textura difusa mapeada, la parte especular del modelo de luz parece que no encaja con el material que se quiere simular, la piedra no brilla así. Se puede arreglar bajando el componente especular a `(0, 0, 0)`, pero eso significaría perder absolutamente todo el brillo. Hay que encontrar una solución que haga que se pueda tener el control del brillo especular a nivel de fragmento.
+
+Se puede usar un mapa de textura para los brillos especulares, de la misma manera que funcionan los mapas difusos. Tan solo ahora el color que se samplea de la textura se va a usar para determinar el impacto del componente especular del modelo de iluminación en cada fragmento. Así que solo se necesitará una textura con un solo canal, es decir en escala de grises, un píxel negro significará que el fragmento no reflejará nada, y un píxel blanco que refleja al máximo.
+
+![Figure [res/015_003]: Mapa Specular](res/015_003.png)
+
+La intensidad de los brillos especulares, por tanto, se obtienen por el brillo de cada píxel de la textura. En el shader de fragmentos se samplea está textura según la coordenada de textura del fragmento y se multiplica por la intensidad especular de la luz.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+struct Material {
+  sampler2D diffuse;
+  sampler2D specular;
+  int shininess;
+};
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [specular_sampler]: Usar una textura para el componente `specular` del material]
+
+Se añade el sampler al `struct` del material en el shader de fragmentos.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+s_phong.set("material.specular", 1);
+
+glActiveTexture(GL_TEXTURE1);
+glBindTexture(GL_TEXTURE_2D, text_spec)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [specular_set]: Unidad de textura correspondiente y su `uniform`]
+
+Y en la CPU, se carga la textura, se sube a la GPU, y se enlaza a la unidad de textura 1 antes de usarla al pintar el objeto.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+vec3 specular = spec * vec3(texture(material.specular, uv))  * light.specular;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [diffuse_phong]: Componente specular usando mapa de textura]
+
+Y solo queda usarla en el shader de fragmentos a la hora de calcular el componente specular, se multiplica directamente el valor sampleado, para obtener un valor de fuerza por fragmento.
+
+![Figure [res/015_004]: Modelo de iluminación con mapa `specular`](res/015_004.png)
+
+Usar mapas difusos y speculares añade mucho detalle a objetos relativamente simples, incluso se puede añadir más detalle a los objetos usando otros objetos de textura, como mapas normales o mapas de reflexión.
+
+# Ejercicios
+
+- Invertir el efecto del mapa specular, para que se vean más brillantes las zonas oscuras y viceversa.
+- Añadir un mapa emisivo, es una textura que almacena valores de color emisivo por fragmento. Son colores que un objeto emite como si tuviera una luz interna, de esta manera un objeto puede emitir luz independientemente del origen de luz. Usar como textura emisiva la imagen en la ruta "assets/textures/emissive.jpg". Usarla para tener un tercer mapa en el modelo de iluminación y pintar sobre el cubo iluminado.
+- Intentar crear un mapa specular (con algún editor de imágenes Photoshop, Gimp,...) a partir de un mapa difuso que en lugar de blanco y negro use colores reales, y usar ese mapa en el `Phong` en lugar del `specular` habitual y verificar el cambio de comportamiento.
+
+<link rel="stylesheet" href="res/md/viu.css">
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'long'};</script>
+<!-- Markdeep: --><script src="res/md/markdeep.min.js?" charset="utf-8"></script>

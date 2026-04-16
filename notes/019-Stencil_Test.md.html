@@ -1,0 +1,163 @@
+<meta charset="utf-8">
+**60GIIN - 019 - Stencil Test**
+    <small>©2026 VIU - 60GIIN Programación Gráfica - Iván Fuertes</small>
+
+# Introducción
+
+Una vez el shader de fragmentos ha procesado el fragmento se ejecuta la prueba de `stencil` (`stencil test`), que, como el test de profundidad, tiene la opción de descartar fragmentos. Una vez ejecutado este `stencil test`, los fragmentos que sobreviven se pasan al test de profundidad que tiene otra opción de descartarlos. El `stencil test` se basa en el contenido de otro buffer llamado el buffer de `stencil`, el cual se puede actualizar durante el pintado para conseguir diversos efectos.
+
+Un buffer de `stencil` normalmente suele contener valores de `stencil` de 8 bits de profundidad, lo que supone 256 valores diferentes para cada fragmento. Se pueden poner esos valores a lo que el programador desee y descartar o mantener fragmentos cuando uno en particular tenga un valor determinado. La librería de ventanas (*GLFW*) se encarga de configurar este buffer.
+
+![Figure [res/019_001]: Uso del `stencil test`](res/019_001.png)
+
+El buffer de stencil primero se limpia con ceros, y entonces un rectángulo de unos se marca en el buffer. Los fragmentos de la escena se pintan (y los demás se descartan) donde el valor del `stencil` para ese fragmento valga 1.
+
+Las operaciones del buffer de `stencil` determinan valores específicos en el buffer donde se están pintando fragmentos. Cambiando el contenido del buffer de `stencil` mientras se está pintando, se escribe sobre dicho buffer. En la misma (o en siguientes) iteraciones de pintado se pueden leer esos valores para descartar o dejar pasar ciertos fragmentos. Por norma general su uso es:
+
+- Habilitar la escritura sobre el buffer de `stencil`
+- Pintar objetos, actualizando el contenido del buffer de `stencil`
+- Deshabilitar la escritura sobre el buffer de `stencil`
+- Pintar objetos, esta vez descartando algunos fragmentos basándose en el contenido del buffer
+
+Se puede habilitar el test de `stencil` con el flag `GL_STENCIL_TEST`, y la función `glEnable`. Desde ese momento, todas las llamadas a pintado influirán en el buffer de `stencil` de una u otra manera.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glEnable(GL_STENCIL_TEST);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [enable_stencil]: Habilitar el test de `stencil`]
+
+Hay que recordar borrar el buffer de `stencil` en cada iteración de pintado, tal como se hace con el de color y el de profundidad.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [clear_stencil]: Borrar el buffer de `stencil`]
+
+Al igual que el `depth test` tenía una función `glDepthMask` para determinar la máscara a usar, hay una función equivalente para el buffer de `stencil`. La función `glStencilMask` permite determinar una máscara de bits que usa un `AND` binario sobre el valor de `stencil` sobre el que se va a escribir en el buffer. Por defecto, está puesta a todo unos, si se pusiera a ceros, entonces todos los valores escritos en el buffer acabarían como ceros, resultando un efecto equivalente al de poner la máscara a `false` en el `depth test` `glDepthMask(GL_FALSE)`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glStencilMask(0x00);   // cada bit acaba como un 0 en el buffer
+glStencilMask(0xff);   // cada bit se escribe en el buffer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [mask_stencil]: Máscara de `stencil`]
+
+La mayoría de las veces se usan estos dos tipos de máscara, pero se puede usar cualquier máscara en función de las necesidades.
+
+# Función de Stencil
+
+Al igual que en el `depth test`, se tiene bastante control sobre cuando un test de `stencil` debe pasar o fallar y como debe afectar esto al buffer de `stencil`. Hay dos funciones para ello `glStencilFunc` y `glStencilOp`.
+
+La función `glStencilFunc` tiene tres parámetros. El primero determina la función a usar para el test de `stencil`, esta función se aplica al valor de `stencil` almacenado y el valor de referencia (segundo parámetro). Las opciones posibles son `GL_NEVER`, `GL_LESS`, `GL_LEQUAL`, `GL_GREATER`, `GL_GEQUAL`, `GL_EQUAL`, `GL_NOTEQUAL` y `GL_ALWAYS`, y su significado es equivalente al de las funciones para el buffer de profundidad. El segundo parámetro es el valor de referencia para el test de `stencil`, el contenido del buffer de `stencil` se compara contra este valor. Y el tercer parámetro especifica una máscara que hace un `AND` binario contra el valor de referencia y el valor almacenado en el buffer de `stencil` antes de realizar la comparación. Inicialmente está puesta a unos.
+
+En el caso del ejemplo simple de la Figure [res/019_001], la función de stencil sería:
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glStencilFunc(GL_EQUAL, 1, 0xFF);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [func_stencil]: Función de `stencil`]
+
+Esto le dice a (OpenGL() que cuando el valor de `stencil` de un fragmento sea igual al valor de referencia 1 el fragmento pasa el test y es pintado, en caso contrario se descarta.
+
+Por otra parte, la función `glStencilOp` determina como actualizar el buffer y también tiene 3 parámetros. El primero es la acción a tomar si el test de `stencil` falla, el segundo la acción a tomar si el test de `stencil` pasa, pero el `depth test` falla, y el tercero, la acción a tomar si ambos tests (`stencil` y `depth`) fallan.
+
+Para cada una de esas opciones se pueden tomar las siguientes acciones.
+
+Acción | Descripción
+--------|-------------
+GL_KEEP | El valor actual almacenado de `stencil` se guarda
+GL_ZERO | El valor de `stencil` se pone a 0
+GL_REPLACE | El valor de `stencil` es reemplazado por el valor de referencia
+GL_INCR | El valor de `stencil` se incrementa en 1, si es menor que el valor máximo
+GL_INCR_WRAP | Igual que `GL_INCR`, pero vuelve a 0 cuando se sobrepasa el máximo
+GL_DECR | El valor de `stencil` se decrementa en 1, si es mayor que el valor mínimo
+GL_DECR_WRAP | Igual que `GL_DECR`, pero vuelve al máximo cuando se sobrepasa el mínimo
+GL_INVERT | Se invierte binariamente el valor actual del `stencil`
+[Table [act]: Acciones del `stencil test`]
+
+Por defecto la función está puesta a (`GL_KEEP`, `GL_KEEP`, `GL_KEEP`), así que cualquiera que sea el resultado de los tests, el buffer de `stencil` siempre mantiene sus valores. El comportamiento por defecto no actualiza el buffer de `stencil`, así que, si se quiere escribir en el buffer, hay que especificar al menos una acción diferente para alguna de las opciones.
+
+Usando `glStencilFunc` y `glStencilOp` se puede especificar de manera precisa cuando y como se quiere actualizar el buffer de `stencil` y también cuando el test pasa o no.
+
+# Contorno de objetos
+
+Hacer un contorno a los objetos es un buen ejemplo de uso del `stencil test`. Para cada objeto (o los que se quieran) se va a crear un pequeño borde coloreado alrededor del mismo. Es un efecto muy útil cuando se quieren seleccionar objetos por el usuario del juego. El método va a ser el siguiente:
+
+- Se pone la función de `stencil` a `GL_ALWAYS` antes de pintar los objetos a contornear, actualizando el buffer de `stencil` con unos donde los fragmentos del objeto se pintan
+- Pintar los objetos
+- Deshabilitar la escritura en el buffer de `stencil` y el `depth test`
+- Escalar un poco cada objeto
+- Usar un shader de fragmentos distinto que solo pinte un color
+- Pintar los objetos otra vez, pero solo si el valor del fragmento en el buffer de `stencil` no es igual a 1
+- Habilitar otra vez la escritura en `stencil` y el `depth test`
+
+Este proceso pondrá el contenido del buffer de `stencil` a unos para todos los fragmentos de los objetos y cuando haya que pintar los contornos, se pintan versiones escaladas de los objetos donde se pasa el test de `stencil`, la versión escalada se pinta lo cual produce el contorno alrededor de los objetos. Se están descartando los fragmentos de las versiones escaladas que son parte de los fragmentos de los objetos originales usando el buffer de `stencil`.
+
+Para el shader de la segunda pasada, cuando se pinta solo el borde se usa un shader muy simple que solo pinta un color fijo.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+
+out vec4 FragColor;
+
+uniform vec4 color;
+
+void main() {
+  FragColor = vec4(color);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [shader_stencil]: Shader de fragmentos con un color fijo]
+
+Primero se pinta el suelo de la escena, un simple `quad`. Después los tres cubos que se van a contornear (mientras se actualiza el buffer de `stencil`), y entonces se vuelven a pintar los tres cubos escalados (mientras se descartan los fragmentos que se han escrito previamente mientras se pintaban los tres cubos).
+
+Primero se habilita el test de `stencil` y se determinan las acciones a tomar cuando el test tiene éxito o falla.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glEnable(GL_STENCIL_TEST);
+glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
+glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [stencil_config]: Configuración del stencil test al inicio]
+
+Si alguno de los tests falla no se hace nada, simplemente se guarda el valor guardado que esté en el buffer de `stencil`. Si ambos tests (`stencil` y `depth`) tienen éxito entonces es cuando se quiere reemplazar el valor almacenado en el `stencil` con el valor de referencia que luego se pondrá a 1 con `glStencilFunc`.
+
+Se borra el buffer de stencil.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [stencil_clear]: Borrar el buffer de stencil]
+
+Y se actualiza el buffer de `stencil` a 1 para cada fragmento pintado de los tres cubos.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glStencilMask(0xff);
+glStencilFunc(GL_ALWAYS, 1, 0xff);
+shader.use();
+drawThreeCubes(shader);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [stencil_1st_pass]: Primera pasada de pintado]
+
+Usando la función de test de `stencil` `GL_ALWAYS` se asegura que los fragmentos de cada cubo actualicen el buffer de `stencil` con el valor 1. Puesto que los fragmentos siempre pasan el test de `stencil`, el buffer se actualiza con el valor de referencia 1 siempre que se pintan.
+
+Ahora que el buffer de `stencil` está actualizado con unos donde se han pintado los tres cubos, se pintan los cubos escalados, pero esta vez deshabilitando las escrituras en el buffer de `stencil`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glStencilMask(0x00);
+glStencilFunc(GL_NOTEQUAL, 1, 0xff);
+glDisable(GL_DEPTH_TEST);
+shaderOneColor.use();
+drawThreeCubes(shaderOneColor);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [stencil_2nd_pass]: Segunda pasada de pintado]
+
+Se pone la función de stencil a `GL_NOTEQUAL` que asegura que solo se pinten las partes de los cubos que no son igual a 1, así pintando solo la parte de los cubos que están por fuera de los que se han pintado previamente. También se deshabilita el test de profundidad para que los bordes no queden por detrás del suelo.
+
+Hay que asegurarse de volver a habilitar el `depth test` una vez pintado.
+
+![Figure [res/019_002]: Cubos pintados con el contorno gracias al `stencil`](res/019_002.png)
+
+Se pueden ver que los bordes se solapan entre los cubos, que suele ser el efecto deseado. Se puede poner un `flag` a la clase modelo para pintar los objetos con o sin bordes, incluso se les puede dar a los bordes un acabado más natural aplicándole un efecto de post proceso como un `blur`.
+
+<link rel="stylesheet" href="res/md/viu.css">
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'long'};</script>
+<!-- Markdeep: --><script src="res/md/markdeep.min.js?" charset="utf-8"></script>

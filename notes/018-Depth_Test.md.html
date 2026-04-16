@@ -1,0 +1,127 @@
+<meta charset="utf-8">
+**60GIIN - 018 - Depth Test**
+    <small>©2026 VIU - 60GIIN Programación Gráfica - Iván Fuertes</small>
+
+# Introducción
+
+El buffer de profundidad (`depth buffer`) es un buffer que como el de color (que almacena los colores de los fragmentos, la salida visual), almacena información por fragmento y que usualmente tiene el mismo tamaño (alto x ancho) que él. El buffer de profundidad es automáticamente creado por el sistema de ventanas (*GLFW*) y almacena los valores de profundidad como `floats` de 16, 24 o 32 bits. En la mayoría de sistemas el buffer de profundidad se guarda con una precisión de 24 bits.
+
+Cuando la verificación de profundidad (`depth testing`) está habilitada, *OpenGL* prueba el valor de profundidad de un fragmento contra el contenido del buffer de profundidad. Si esta verificación se pasa, entonces el buffer de profundidad se actualiza con el nuevo valor de profundidad. Si la verificación falla, el fragmento se descarta.
+
+El `depth testing` se realiza en espacio de pantalla (`screen space`) después de que se haya ejecutado el shader de fragmentos (y después de ejecutarse la verificación de `stencil`). Las coordenadas en espacio de pantalla se relacionan directamente con el `viewport` definido en *OpenGL* por la función `glViewPort`, y se puede acceder directamente a través de la variable `gl_FragCoord` dentro del shader de fragmentos. Las componentes `x` e `y` de `gl_FragCoord` representan las coordenadas del fragmento en espacio de pantalla, con la coordenada `(0,0)` en la esquina inferior izquierda. Esta variable también contiene el componente `z` que representa el valor de profundidad del fragmento. Este valor es el que se compara contra el contenido del buffer de profundidad.
+
+Actualmente muchas GPUs modernas soportan una característica de hardware llamada verificación de profundidad temprana (`early depth testing`). Esto permite hacer el `depth testing` antes de ejecutar el shader de fragmentos, así se pueden descartar fragmentos que nunca van a ser visibles y evitar ejecutar dicho shader. Los shader de fragmentos suelen ser bastante caros de ejecutar, así que evitarlos siempre es deseable. Una restricción de esta característica es que no se puede escribir en el valor de profundidad del fragmento. Si un shader de fragmentos tiene que escribir su valor de profundidad, es imposible la verificación temprana, *OpenGL* no será capaz de averiguar el valor de profundidad de antemano.
+
+El test de profundidad está deshabilitado por defecto, para habilitarlo se necesita llamar a la función `glEnable` con el parámetro `GL_DEPTH_TEST`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glEnable(GL_DEPTH_TEST);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [enable]: Habilitar el test de profundidad]
+
+Una vez habilitado, *OpenGL* automáticamente guarda los valores de profundidad de los fragmentos en el buffer de profundidad si pasan el test, y los descarta si fallan el test. Si se tiene habilitado el `depth testing` también habría que limpiar el buffer de profundidad antes de cada iteración de pintado, usando el flag `GL_DEPTH_BUFFER_BIT` en la llamada a `glClear`. De otra manera se usarán los valores de profundidad de la última iteración de pintado.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [clear]: Limpiar el buffer de profundidad]
+
+Hay ciertos supuestos donde se quiere realizar el test de profundidad en todos los fragmentos y descartarlos como corresponde, pero no se quiere actualizar el buffer de profundidad. Básicamente, el buffer de profundidad se usa como solo lectura. *OpenGL* permite deshabilitar la escritura al buffer de profundidad poniendo la máscara de profundidad a `GL_FALSE`. Esto solo funciona cuando el `depth testing` está habilitado.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glDepthMask(GL_FALSE);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [mask]: Máscara de profundidad]
+
+# Función de Depth Test
+
+*OpenGL* permite modificar los operadores de comparación que usa para el test de profundidad. Esto permite al programador controlar cuando *OpenGL* debería dejar pasar o descartar fragmentos, y cuando actualizar el buffer de profundidad. Se puede determinar el operador de comparación (o función de `depth testing`) llamando a `glDepthFunc`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glDepthFunc(GL_LESS);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [func]: Función del test de profundidad]
+
+Función | Descripción
+--------|-------------
+GL_ALWAYS | El test siempre pasa
+GL_NEVER | El test nunca pasa
+GL_LESS | Pasa si el valor de profundidad nuevo es menor que el almacenado (por defecto)
+GL_EQUAL | Pasa si el valor de profundidad nuevo es igual que el almacenado
+GL_LEQUAL | Pasa si el valor de profundidad nuevo es menor o igual que el almacenado
+GL_GREATER | Pasa si el valor de profundidad nuevo es mayor que el almacenado
+GL_NOTEQUAL | Pasa si el valor de profundidad nuevo no es igual que el almacenado
+GL_GEQUAL | Pasa si el valor de profundidad nuevo es mayor o igual que el almacenado
+[Table [func]: Operadores de comparación]
+
+Esta función acepta varios operadores de comparación. Por defecto se usa la función `GL_LESS`, que descarta los fragmentos que tienen un valor de profundidad mayor o igual que el valor en el buffer de profundidad en ese momento.
+
+Usando una escena con 3 cubos alineados en diferente profundidad se puede observar claramente el efecto del `depth testing`. Poniendo la función de profundidad a `GL_ALWAYS` se simula el mismo comportamiento que deshabilitando el test de profundidad. El test siempre pasa, así que los fragmentos que acaban viéndose son los últimos que se pintan, delante del resto de fragmentos que se han pintado antes.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glDepthFunc(GL_ALWAYS);
+glEnable(GL_DEPTH_TEST);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [func_always]: Siempre pasa el test de profundidad]
+
+![Figure [res/018_001]: Cubos pintados sin `depth testing`](res/018_001.png)
+
+En este caso es el orden de pintado el que determina qué objetos se pintan sobre los demás, en la escena de ejemplo, se pintan primero los cubos más cercanos a la cámara, con lo cual los fragmentos de los cubos más alejados y que se pintan más tarde son los que finalmente se ven.
+
+Si se vuelve a poner la función de depth al valor normal de `GL_LESS` se pinta como se espera. Con los cubos más cercanos ganando los tests.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glDepthFunc(GL_LESS);
+glEnable(GL_DEPTH_TEST);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [func_always]: Siempre pasa el test de profundidad]
+
+![Figure [res/018_002]: Cubos pintados con `depth testing`](res/018_002.png)
+
+# Precisión de la profundidad
+
+El buffer de profundidad contiene los valores de profundidad entre `0.0` y `1.0` y compara sus valores contra el valor de `z` de todos los objetos en la escena desde el punto de vista de la cámara. Estos valores de `z` en espacio de vista pueden ser cualquier valor entre el `near` y el `far` del `frustum` de la proyección. Se necesita alguna manera de transformar estos valores de `z` que están en espacio de vista al rango `[0.0, 1.0]` y una manera es transformarlos linealmente a ese rango.
+
+\begin{equation}
+F_{depth} = \frac{z - near}{far - near}
+\end{equation}
+
+Los valores de `near` y `far` son los que se usan en la matriz de proyección para determinar el `frustum` visible. La ecuación toma un valor de profundidad `z` dentro del `frustum` y los transforma al rango `[0.0, 1.0]`. La relación entre el valor `z` y el correspondiente valor de profundidad se representa en este gráfico.
+
+![Figure [res/018_003]: Gráfico del valor de profundidad lineal](res/018_003.png)
+
+La ecuación da un valor de profundidad cercano a `0.0` cuando el objeto está cerca del plano `near` (cerca de la cámara) y un valor cercano a `1.0 `cuando está cerca del plano `far` (lejos de la cámara).
+
+En la práctica, un buffer de profundidad lineal no se usa. Para una proyección correcta se usa una ecuación de profundidad no lineal que es proporcional a `1/z`, inversamente proporcional a la distancia. Lo que hace esto en la práctica es dar mucha precisión cuando la `z` es pequeña y mucha menos precisión cuando la `z` está muy alejada. Lo cual es interesante, puesto que no necesitamos demasiada precisión para objetos que están muy alejados de la cámara, pero sí para objetos muy cercanos.
+
+Puesto que la función no lineal es proporcional a `1/z`, los valores de `z` entre `1.0` y `2.0` por ejemplo, resultarían en valores de profundidad entre `0.0` y `0.5`, lo cual es la mitad de la precisión que da un valor en coma flotante (`float`), dando mucha precisión en valores de `z` pequeños. Valores de `z` entre `50.0` y `100.0` representarían solo el 2% de la precisión de un `float`, que es lo deseado.
+
+\begin{equation}
+F_{depth} = \frac{\frac{1}{z} - \frac{1}{near}}{\frac{1}{far} - \frac{1}{near}}
+\end{equation}
+
+Esta es la ecuación no lineal que se suele usar para los valores de profundidad. Con lo cual los valores en el buffer de profundidad no son lineales en el espacio de pantalla (son lineales en el espacio de vista antes de aplicar la matriz de proyección). Un valor de `0.5` en el buffer de profundidad no significa que el valor de `z` del objeto esté a mitad camino en el `frustum`, el valor de `z` del vértice estará en realidad bastante cerca al plano `near`.
+
+![Figure [res/018_004]: Gráfico del valor de profundidad no lineal](res/018_004.png)
+
+Este gráfico muestra la relación no lineal entre el valor de `z` y su valor resultante en el buffer de profundidad. Los valores de profundidad son mayormente determinados por valores pequeños de `z`, dando una gran precisión en los objetos cercanos. La ecuación para transformar los valores de `z` (desde la perspectiva de la cámara) está incrustada dentro de la matriz de proyección, así cuando se transforman las coordenadas del vértice desde el espacio de cámara al de clip y luego al de pantalla, la ecuación no lineal se aplica.
+
+# Z-Fighting
+
+El `Z-Fighting` es un problema visual muy común que ocurre cuando dos planos o triángulos se alinean muy cercanos uno a otro de tal manera que el buffer de profundidad no tiene suficiente precisión para determinar cuál de las dos formas está delante de la otra. El resultado es que las dos formas están continuamente cambiando su orden lo que causa un fallo visual. Se llama `Z-Fighting` porque parece que las dos formas estén peleando por quedar por encima.
+
+Si dos formas tienen los valores de profundidad iguales el test de profundidad entonces no tiene ninguna manera de averiguar cuál es la que se debe mostrar.
+
+![Figure [res/018_005]: `Z-Fighting`](res/018_005.png)
+
+Este es un problema común y es más fuerte con objetos que están a una distancia lejana (porque el buffer de profundidad tiene menos precisión en valores de `z` más grandes).
+
+La forma más fácil de solucionarlo es nunca colocar objetos demasiado cercanos a otros, de manera que sus triángulos nunca se solapen. Crear un pequeño espacio entre dos objetos es difícilmente apreciable por el usuario y previene completamente el `Z-Fighting`. El problema es que requiere la intervención manual para cada objeto y hay que verificar visualmente que los objetos en la escena no producen este problema.
+
+Otra manera de solucionarlo es poner el plano `near` tan lejos como sea posible. La precisión es muy grande en objetos cercanos al plano `near`, así que, si se mueve ese plano lejos de la cámara, se tendrá mucha precisión en todo el rango del `frustum`. Sin embargo, poner el plano `near` demasiado lejos puede causar el `clipping` de objetos cercanos, así que, una vez más, es cuestión de experimentar y ajustar parámetros para buscar el mejor `near` para la escena en cuestión.
+
+Una tercera manera a costa de perder algo de rendimiento, es usar un buffer de profundidad con más precisión. La mayoría de los buffers de profundidad tienen una precisión de 24 bits, pero la mayoría de las GPUs modernas soportan buffers de profundidad de 32 bits, lo que incrementa la precisión del testing de profundidad.
+
+<link rel="stylesheet" href="res/md/viu.css">
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'long'};</script>
+<!-- Markdeep: --><script src="res/md/markdeep.min.js?" charset="utf-8"></script>

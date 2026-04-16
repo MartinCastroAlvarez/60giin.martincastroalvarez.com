@@ -1,0 +1,221 @@
+<meta charset="utf-8">
+**60GIIN - 025 - Parallax Mapping**
+    <small>©2026 VIU - 60GIIN Programación Gráfica - Iván Fuertes</small>
+
+# Introducción
+
+El *parallax mapping* es una técnica similar al *normal mapping*, pero basada en una serie de principios distinta. También incrementa de manera dramática el detalle de las superficies con texturas, y les otorga una sensación de profundidad. Pero, pese a ser también una ilusión, esta técnica es bastante más eficaz a la hora de transmitir una sensación de profundidad y, junto con el *normal mapping*, acaba dando unos resultados muy realistas.
+
+![Figure [res/025_001]: Textura de una pared de piedras](res/025_001.png width="300px")
+
+La técnica del *parallax mapping* pertenece a la familia de técnicas de desplazamiento, que desplazan los vértices basándose en información geométrica almacenada en una textura. Una forma de hacer esto, es coger un plano con, por ejemplo, 1000 vértices, y desplazar cada uno de esos vértices a partir de un valor en una textura que indica la altura del plano en un área determinada. La textura que almacena dichos valores de altura, se llama mapa de altura, *height map*.
+
+![Figure [res/025_002]: Mapa de alturas](res/025_002.png width="300px")
+
+Extendiendo esto sobre un plano, cada vértice se desplaza en base al valor de altura sampleado del mapa de alturas, transformando un plano liso en una superficie áspera y llena de protuberancias, basadas en las propiedades geométricas del material.
+
+![Figure [res/025_003]: `Parallax mapping`](res/025_003.png)
+
+El problema al desplazar los vértices de esta manera, es que el plano necesita tener un buen número de triángulos para obtener un desplazamiento realista, de lo contrario se ve con poco detalle. Para ello cada superficie plana puede necesitar más de 10.000 vértices para producir un buen resultado, y esto se convierte pronto en un problema computacional. Pero... ¿y si se pudiera de alguna manera un realismo similar sin la necesidad de esos vértices extra? De hecho, Figure [res/025_003] se ha pintado con solo dos triángulos, con *parallax mapping*, que no requiere de vértices extra para simular la profundidad, pero al igual que `normal mapping`, usa un truco para engañar al usuario.
+
+La idea detrás de esto, es alterar las coordenadas de textura de tal manera que parezca que la superficie de un fragmento es más alta o más baja de lo que realmente es, todo basado en la dirección de la vista y el mapa de alturas.
+
+![Figure [res/025_004]: Superficie de las piedras](res/025_004.png)
+
+Aquí la línea roja representa los valores en el mapa de alturas, como la representación gráfica de la superficie geométrica de la superficie de la pared de piedras. El vector $\vec{V}$ representa la dirección desde la superficie a la vista (*viewdir*). Si el plano tuviera desplazamiento real, el espectador vería la superficie en el punto $B$. Sin embargo, puesto que el plano no tiene desplazamiento real, la dirección vista se calcula desde el punto $A$, como se espera. El `parallax mapping` intenta compensar las coordenadas de textura en la posición del fragmento $A$, de tal manera, que se obtengan las coordenadas de textura en la posición $B$. Entonces, se usan las coordenadas de textura en la posición $B$ para todos los sampleos de textura siguientes, haciendo que parezca que el espectador está mirando realmente al punto $B$.
+
+El truco está en averiguar como conseguir las coordenadas de textura en el punto $B$ a partir del punto $A$. Se soluciona esto cogiendo el vector dirección fragmento a vista $\vec{V}$, y escalándolo por la altura en el punto $A$. Así, se escala la longitud de $\vec{V}$ para se igual al valor sampleado del mapa de alturas $H(A)$ en la posición del fragmento $A$. Este es el vector $\vec{P}$.
+
+![Figure [res/025_005]: Vector $\vec{P}$ escalado](res/025_005.png)
+
+Se coge este vector $\vec{P}$ y sus coordenadas vectoriales, que se alinean con el plano como el desplazamiento de las coordenadas de textura. Esto funciona porque el vector $\vec{P}$ se calcula usando un valor de altura desde el mapa de alturas. Cuanto más alta sea la altura de un fragmento, se desplazará más.
+
+Esto funciona casi siempre, pero aún es una aproximación muy ruda para conseguir el punto $B$. Cuando la altura cambia rápidamente a lo largo de una superficie, los resultados tienden a parecer poco reales, puesto que el vector $\vec{P}$ no acaba muy cerca de $B$, como se ve en Figure [res/025_006].
+
+![Figure [res/025_006]: Vector $\vec{P}$ no alineado con $B$](res/025_006.png)
+
+Otro problema con está técnica es la dificultad de averiguar que coordenadas obtener de $\vec{P}$ cuando la superficie es rotada de manera arbitraria. Habría que hacer esto es un espacio de coordenadas diferente, donde los componentes `x` e `y` del vector $\vec{P}$ siempre se alineen con la superficie de la textura. Tal como se realizaba en `normal mapping`, realizando las operaciones en el espacio tangente.
+
+Transformando el vector $\vec{V}$ (fragmento a vista) al espacio tangente, el vector $\vec{P}$ transformado tendrá sus componentes `x` e `y` alineadas a los vectores tangente y bitangente de la superficie. Y puesto que los vectores tangente y bitangente apuntan en la misma dirección que las coordenadas de textura de la superficie, se puede coger los componentes `x` e `y` de $\vec{P}$ como el desplazamiento de las coordenadas de textura, independientemente de la orientación de la superficie.
+
+# Parallax Mapping
+
+Se va a usar un plano 2D muy simple, para el cual se han calculado sus vectores tangente y bitangente antes de mandarlos a la GPU, tal como se hacia con `normal mapping`. Al plano se le va a adjuntar una textura difusa, un mapa de normales y un mapa de desplazamiento. Normalmente el `parallax mapping` se usar conjuntamente con `normal mapping`, puesto que el primero ofrece la ilusión del desplazamiento de una superficie, la ilusión se rompe, si la luz no encaja. Puesto que los mapas de normales se suelen generar a partir de mapas de alturas, usar un mapa de normales junto a uno de alturas, nos asegura que la luz funciona con el desplazamiento.
+
+Normalmente los mapas de alturas que se usan en esta técnica son el inverso al habitual (blanco para alturas más altas). Es mejor idea usar este inverso (negro para alturas más altas), puesto que es más fácil simular profundidad que altura en las superficies planas. Esto cambia ligeramente como se percibe esta técnica.
+
+![Figure [res/025_007]: `Parallax Mapping` con el mapa de alturas invertido](res/025_007.png)
+
+Se tienen los puntos $A$ y $B$, pero esta vez se obtiene el vector $\vec{P}$ restando el vector $\vec{V}$ de las coordenadas de textura en el punto $A$. Se pueden obtener los valores de profundidad en lugar de los valores de altura, restando los valores de altura sampleados a `1.0` en los shaders, o simplemente invirtiendo los valores de la textura en un software de edición de imágenes.
+
+Se suele implementar en el shader de fragmentos, puesto que el efecto del desplazamiento es diferente a lo largo de la superficie del triángulo. En este shader de fragmentos se tiene que calcular el vector $\vec{V}$, dirección del fragmento a la vista, así que se necesita la posición de la vista y la posición del fragmento en espacio de tangente. Esto se hacía con el `normal mapping` en el shader de vértices, así que se puede usar el mismo shader de vértices.
+
+En el shader de fragmentos es donde hay novedades. Se añade un nuevo elemento con el mapa de alturas en el `struct` del material.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+struct Material {
+  sampler2D diffuse;
+  sampler2D specular;
+  sampler2D normal;
+  sampler2D height;
+  int shininess;
+};
+uniform Material material;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [height]: Mapa de alturas en el `struct` del material]
+
+Se calcula el vector $\vec{V}$ `viewdir` (de `fragpos` a vista) en espacio de tangente y se llama a la función `ParallaxMapping`, que devolverá las coordenadas de textura desplazadas, que se usarán ahora para samplear en los mapas de difuso y normales en el cálculo normal de la iluminación. Como resultado, el difuso y el vector normal del fragmento corresponde a la geometría desplazada de la superficie.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+uniform float height_scale;
+
+vec2 ParallaxMapping(vec2 uv, vec3 viewDir);
+
+void main() {
+  vec3 viewDir = normalize(tangentViewPos - tangentFragPos);
+  vec2 disp_uv = ParallaxMapping(uv,  viewDir);
+
+  vec3 normal = texture(material.normal, disp_uv).stp;
+  normal = normalize(normal * 2.0 - 1.0);
+
+  vec3 albedo = texture(material.diffuse, disp_uv).stp;
+  ....
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [fragment]: Shader de fragmentos]
+
+Se define la función `ParallaxMapping` que recibe como parámetros de entrada las coordenadas de textura del fragmento y el vector $\vec{V}$ `viewdir` (de `fragpos` a vista) en espacio de tangente. La función devolverá las coordenadas de textura desplazadas.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+vec2 ParallaxMapping(vec2 uv, vec3 viewDir) {
+    float height =  texture(material.height, uv).s;
+    vec2 p = viewDir.xy / viewDir.z * (height * height_scale);
+    return uv - p;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [func]: Función para calcular el desplazamiento de las coordenadas de textura]
+
+Aquí se cogen las coordenadas de textura originales `uv` y se usan para samplear la altura en el mapa de alturas del material, `material.height` en el fragmento actual $A$, como $H(A)$. Luego se calcula el vector $\vec{P}$, cogiendo los componentes `x` e `y` del vector $\vec{V}$ `viewdir` en espacio de tangente, divididas por su componente `z` y escalados por $H(A)$. Se introduce un nuevo `uniform`, `height_scale` para poder hacer un control más fino sobre la altura, puesto que normalmente el efecto del `parallax` es demasiado fuerte sin este parámetro extra. Por último se resta este vector $\vec{P}$ de las coordenadas de textura para obtener las definitivas coordenadas de textura desplazadas.
+
+Puesto que el vector `viewdir` está normalizado, su componente `z` estará en el rango `[0.0, 1.0]`. Cuando `viewdir` sea paralelo a la superficie, su componente `z` estará muy cerca de `0.0` y la división devolverá un vector $\vec{P}$ mucho más grande comparado al momento cuando `viewdir` es perpendicular a la superficie. De hecho, se está ajustando el vector $\vec{P}$ de una manera en la cual desplaza las coordenadas de textura a una escala mayor cuando se mira a la superficie desde un ángulo comparado a como se hace cuando se mira desde arriba, esto muestra resultados más realistas en esos ángulos. A veces se prefiere dejar la división por el componente `z` fuera de la ecuación, eso produce efectos distintos en esos ángulos acusados.
+
+Las coordenadas de textura resultantes se usan para samplear en las otras texturas (difuso y normal), esto produce el efecto de desplazamiento deseado.
+
+![Figure [res/025_008]: `Parallax Mapping` vs `Normal Mapping`](res/025_008.png)
+
+Se puede apreciar claramente la diferencia entre un `normal mapping` simple, y uno combinado con `parallax mapping`. Puesto que el `parallax` intenta simular la profundidad es posible encontrarse con algunos ladrillos que se superpongan sobre otros en función de la dirección desde donde se mire a la superficie.
+
+Se pueden ver algunos artefactos en los bordes del plano, esto sucede porque en los bordes del plano las coordenadas de textura desplazadas pueden samplear más allá del rango `[0,1]`. Esto muestra unos resultados bastante irreales en función del modo de `wrapping` de la textura. El truco para solucionar esto es descartar el fragmento siempre que se intenta samplear fuera del rango de las coordenadas de textura.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+  if (disp_uv.x > 1.0 || disp_uv.y > 1.0 || disp_uv.x < 0.0 || disp_uv.y < 0.0)
+    discard;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [discard]: Descartar fragmento si se va a samplear fuera del rango `[0,1]']
+
+Todos los fragmentos con las coordenadas de textura desplazadas fuera del rango por defecto se descartan, y entonces se muestra los resultados correctos cerca de los bordes de la superficie. Este truco no funciona con todas las superficies, pero para planos lo hace bien.
+
+![Figure [res/025_009]: Descartando los bordes](res/025_009.png)
+
+El resultado final es bastante espectacular y es bastante rápido, puesto que solo se necesita un sampleo extra de una textura. Pero tiene algunos problemas, puesto que se rompe la ilusión )al mirar desde un ángulo pronunciado (como le pasaba al `normal mapping`), y también funciona mal con cambios de altura pronunciados.
+
+![Figure [res/025_010]: Ángulo inclinado y cambios de altura pronunciados](res/025_010.png)
+
+# Steep Parallax Mapping
+
+Ésta es una extensión de la técnica anterior que usa los mismos principios. pero en lugar de coger solo un sample, coge varios para precisar mejor el vector $\vec{P}$ a $B$. Esto da mucho mejores resultados, incluso con cambios de altura bruscos, puesto que la precisión mejora por el número de samples.
+
+La idea general es dividir al rango de profundidad total en varias capas de la misma altura/profundidad. Para cada una de esas capas se samplea en el mapa de alturas, cambiando las coordenadas de textura a lo largo de la dirección de $\vec{P}$, hasta que se encuentra un valor de altura sampleado que es menor que el valor de altura de la capa actual.
+
+![Figure [res/025_011]: `Steep parallax mapping`](res/025_011.png)
+
+Se cruzan las capas de altura de arriba hacia abajo, y para cada capa se compara su valor de altura con la altura almacenada en el mapa de alturas. Si la altura d ela capa es menor que el valor del mapa de altura, significa que la parte del vector $\vec{P}$ en esa capa no está bajo la superficie. Se continua este proceso hasta que la altura de la capa es mayor que el valor almacenado en el mapa de alturas, entonces ese punto está bajo la superficie geométrica desplazada.
+
+En Figure [res/025_011] se puede observar como el valor de altura en la segunda capa $T_2$ es `0.73` en el mapa de altura, que es menor que el valor de la altura `0.4`, así que se continua. En la siguiente iteración, en $T_3$, el valor de altura es de `0.6`, que es mayor que el valor sampleado del mapa de altura `0.37`. Se puede entender entonces, que el vector $\vec{P}$ en la tercera capa es la posición más probable de la geometría desplazada. Se toma el valor de desplazamiento de la coordenada de textura en $T_3$ desde el vector $\vec{P_3}$ para desplazar las coordenadas de textura del fragmento. La precisión aumenta cuantas más capas de altura se usen.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+vec2 ParallaxMapping(vec2 texCoords, vec3 viewDir) {
+    // number of depth layers
+    const float numLayers = 10;
+    // calculate the size of each layer
+    float layerDepth = 1.0 / numLayers;
+    // depth of current layer
+    float currentLayerDepth = 0.0;
+    // the amount to shift the texture coordinates per layer (from vector P)
+    vec2 P = viewDir.xy * height_scale;
+    vec2 deltaTexCoords = P / numLayers;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [steep_1]: Función para el número de capas]
+
+Se especifican el número de capas que se van a usar, se calcula la compensación u offset de cada capa, y se calcula el desplazamiento de la coordenada de textura que se tiene que mover en la dirección de $\vec{P}$ por capa.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+    // get initial values
+    vec2  currentTexCoords     = texCoords;
+    float currentDepthMapValue = texture(material.height, currentTexCoords).s;
+
+    while(currentLayerDepth < currentDepthMapValue) {
+        // shift texture coordinates along direction of P
+        currentTexCoords -= deltaTexCoords;
+        // get depthmap value at current texture coordinates
+        currentDepthMapValue = texture(material.height, currentTexCoords).s;
+        // get depth of next layer
+        currentLayerDepth += layerDepth;
+    }
+
+    return currentTexCoords;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [steep_2]: Iterar sobre las capas]
+
+Se itera sobre todas las capas, desde arriba, hasta encontrar un valor en el mapa de alturas que es menor que la altura de la capa. Se itera sobre todas las capas, una a una desde arriba, y se para cuando se encuentra al primer desplazamiento de la coordenada de textura sobre el vector $\vec{P}$ que está por debajo de la superficie desplazada. El desplazamiento obtenido se resta de las coordenadas de textura del fragmento para conseguir el vector desplazado de la coordenada de textura, esta vez con mucha más precisión. Con unos 10 muestreos la superficie se ve mucho mejor incluso desde un ángulo pronunciado.
+
+![Figure [res/025_012]: `Steep parallax mapping`](res/025_012.png)
+
+Se puede mejorar el algoritmo aprovechando una de las propiedades de esta técnica. Cuando se mira de frente a una superficie no hay mucho desplazamiento de las texturas, mientras que sí lo hay cuando se mira en ángulo. Se pueden usar menos samples cuando se mira de frente a la superficie, y más cuando se mira en ángulo, minimizando el número de samples necesarios.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+    const float minLayers = 8;
+    const float maxLayers = 32;
+    float numLayers = mix(maxLayers, minLayers, abs(dot(vec3(0.0, 0.0, 1.0), viewDir)));
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [steep_layers]: Número de capas dinámico]
+
+Se coge el producto escalar de `viewdir` y la dirección positiva en `z` y se usa el resultado para alinear el número de capas a `maxLayers` o `minLayers` en función del ángulo desde el que se está mirando a la superficie. La posición positiva de `z` equivale al vector normal a la superficie en espacio de tangente. Si se mira en una dirección paralela a la superficie se usan un total de 32 capas.
+
+Esta técnica ahora viene con un problema extra, puesto que se basa en un número finito de sampleos, se pueden apreciar efectos de aliasing y distinciones muy claras entre las capas. Se puede mejorar esto usando un número mayor de capas, pero esto puede llegar a suponer un problema de performance.
+
+# Parallax Occlusion Mapping
+
+Esta técnica es una ampliación de la anterior, pero en lugar de coger las coordenadas de textura de la primera capa tras una colisión, se va a interpolar linealmente entre la capa de altura antes y después de la colisión. El peso de la interpolación se basa en la distancia entre la altura de la superficie y la altura de cada una de las dos capas.
+
+![Figure [res/025_013]: `Parallax occlusion mapping`](res/025_013.png)
+
+Es muy similar al efecto anterior, pero con el paso extra de la interpolación lineal entre las coordenadas de textura de las dos capas de altura alrededor del punto de intersección. Sigue siendo una aproximación, pero mucho más precisa.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+    // get texture coordinates before collision (reverse operations)
+    vec2 prevTexCoords = currentTexCoords + deltaTexCoords;
+
+    // get depth after and before collision for linear interpolation
+    float afterDepth  = currentDepthMapValue - currentLayerDepth;
+    float beforeDepth = texture(material.height, prevTexCoords).s - currentLayerDepth + layerDepth;
+
+    // interpolation of texture coordinates
+    float weight = afterDepth / (afterDepth - beforeDepth);
+    vec2 finalTexCoords = prevTexCoords * weight + currentTexCoords * (1.0 - weight);
+
+    return finalTexCoords;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [occlusion]: Interpolar los valores]
+
+Una vez se encuentra la capa de altura tras la intersección con la geometría de la superficie desplazada, se obtienen las coordenadas de textura de la capa de altura antes de la intersección. Se calcula la distancia de la altura de la geometría desplazada desde la capa de altura correspondiente, y se interpola entre esos dos valores. La interpolación lineal es una interpolación básica entre las dos coordenadas de textura de ambas capas. La función por último devuelve las coordenadas de textura interpoladas.
+
+![Figure [res/025_014]: `Parallax occlusion mapping`](res/025_014.png)
+
+El `Parallax occlusion mapping` da muy buenos resultados y aún se pueden observar algunos artefactos y problemas de aliasing, pero es una buena aproximación y se ve bien incluso cuando se hace mucho zoom o se ve con ángulos pronunciados. Esta técnica se suele usar para dibujar paredes o suelos, donde no es sencillo determinar el contorno de la superficie y el ángulo de visión suele ser más o menos perpendicular a la superficie. Así los artefactos de esta técnica no se ven tan claramente.
+
+<link rel="stylesheet" href="res/md/viu.css">
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'long'};</script>
+<!-- Markdeep: --><script src="res/md/markdeep.min.js?" charset="utf-8"></script>

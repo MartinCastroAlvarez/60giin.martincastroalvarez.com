@@ -1,0 +1,370 @@
+<meta charset="utf-8">
+**60GIIN - 021 - Normal Mapping**
+    <small>©2026 VIU - 60GIIN Programación Gráfica - Iván Fuertes</small>
+
+# Introducción
+
+Las escenas están llenas de modelos, cada uno de ellos compuesto de cientos o miles de triángulos planos. Se le ha dado realismo pegando texturas 2D a esos triángulos para darles detalle, ocultando el hecho de que al final del todo los polígonos de los modelos no son más que pequeños triángulos planos. Las texturas ayudan, pero al mirar de cerca es bastante fácil ver las superficies planas de debajo. La mayoría de las superficies del mundo real no son planas y en cambio tienen un montón de detalles irregulares.
+
+Por ejemplo, la superficie de una pared de ladrillo, es bastante rugosa y no es completamente plana, tiene bandas hundidas y un montón de pequeños agujeros y grietas. Si hubiera que mostrar una superficie como esa en una escena iluminada, la inmersión se rompería fácilmente.
+
+![Figure [res/021_001]: Escena con modelo iluminado con mapas difusos y speculares](res/021_001.png)
+
+Hasta ahora, la luz no tiene en cuenta ninguna de las grietas y agujeros e ignora las bandas de profundidad entre ladrillos, la superficie parece plana. Se puede solucionar esto usando un mapa specular para simular que algunas superficies están menos iluminadas debido a la profundidad y otros detalles. Pero se necesita otra manera de informar al sistema de iluminación acerca de todos esos pequeños detalles de la superficie.
+
+Si se mira este problema desde el punto de vista de la iluminación, ¿cómo se ilumina una superficie completamente plana? La respuesta es, a través del vector normal de la superficie. En el algoritmo de iluminación la única manera que determina la forma de un objeto es por su vector perpendicular normal. La superficie de la pared solo tiene un vector normal y como resultado la superficie se ilumina de manera uniforme basándose en la dirección de su vector normal. Pero y si, ¿en lugar de una normal por superficie que es la misma para todos los fragmentos de esa superficie, se usara una normal diferente para cada fragmento? De esta manera, se puede desviar mínimamente el vector normal basándose en los pequeños detalles de la superficie, y como resultado dar la ilusión de una superficie mucho más compleja.
+
+![Figure [res/021_002]: Normal por superficie vs Normal por fragmento](res/021_002.png)
+
+Usando normales por fragmento se puede engañar al sistema de iluminación para que crea que una superficie consiste de muchos planos pequeños (perpendiculares a los vectores normales), y así mostrar mucho más detalle. Esta es la técnica del `normal mapping` o `bump mapping`. Se consigue mucho detalle a un coste relativamente bajo, solo se cambian los vectores normales por fragmento, no hay necesidad de cambiar nada en la ecuación de la iluminación. Se pasa una normal por fragmento en lugar de una normal interpolada por superficie al algoritmo de iluminación.
+
+# Normal Mapping
+
+Para hacer funcionar el `normal mapping`, se necesita una normal para cada fragmento. De manera similar a los mapas difusos y speculares, se puede usar una textura 2D para almacenar los datos de las normales para cada fragmento. Se pueden almacenar vectores normales en una textura 2D. De esta manera se puede samplear de una textura 2D para conseguir un vector normal para un fragmento en concreto.
+
+Puesto que los vectores normales son entidades geométricas y las texturas generalmente se usan solo para almacenar información de color, guardar vectores normales en una textura puede no parecer obvio a primera vista. Pero si se piensa que los vectores de color en una textura se representan como un vector 3D, con un componente `R`, `G` y `B`, entonces se pueden almacenar de manera similar los componentes `x`, `y` y `z` de un vector normal, en sus respectivos componentes de color. Los vectores normales siempre están entre `-1` y `1`, así que primero hay que mapearlos al rango `[0,1]`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+vec3 rgb_normal = normal * 0.5 + 0.5;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [map]: Mapear vector normal al rango `[0,1]`]
+
+Con los vectores normales transformados en un componente de color `RGB` se puede almacenar una normal por fragmento derivada de una superficie en una textura 2D.
+
+![Figure [res/021_003]: Textura 2D con los vectores normales codificados como colores](res/021_003.png)
+
+Normalmente las texturas de normales suelen tener un tinte azulado. Esto es porque las normales están casi siempre apuntando hacia el eje positivo de `z`, que es `(0,0,1)`, un color azul. Las pequeñas desviaciones de color representan vectores normales que están desviados de la habitual dirección positiva `z`, dando un sentido de profundidad a la textura. Por ejemplo, en la parte inferior de cada ladrillo se puede ver más verde (teniendo en cuenta que las texturas se leen con el eje `y` invertido), lo que tiene sentido, puesto que el borde superior de cada ladrillo debería tener las normales apuntando hacia la dirección positiva `y` `(0,1,0)`, color verde.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+sampler2D normal_texture;
+
+void main() {
+  vec3 normal = vec3(texture(normal_texture, uv));
+  normal = normalize(normal * 2.0 - 1.0);
+
+  //lighting model as usual
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [sampler]: Samplear y se devuelve la normal a su rango `[-1,1]`]
+
+En el shader de fragmentos se lee de la textura de normales, se mapea el color del rango `[0,1]` al rango `[-1, 1]`, y se usa esa normal en el modelo de iluminación en lugar de la normal por vértice.
+
+Hay un problema que limita el uso tan simple de los mapas de normales. El mapa de normales tiene vectores normales y todos apuntan de manera general hacia la `z` positiva. Si la superficie que se pinta está apuntando en la dirección de las `z’s` positivas este sistema funciona. Pero si se usa el mismo mapa de normales en una superficie que está descansando en el suelo con un vector normal a la superficie apuntando hacia la dirección de las `y’s` positivas, esto no funciona. La iluminación no se verá correctamente. Las normales sampleadas del mapa de normales están apuntando hacia las `z’s` positivas, aunque deberían apuntar hacia las `y’s` positivas.
+
+Para solucionar el problema hay que realizar los cálculos de iluminación en un espacio de coordenadas distinto, donde los vectores del mapa de normales apunten siempre hacia la `z` positiva. Entonces, todos los otros vectores de la iluminación se transforman a esta dirección de `z` positiva. De esta manera se puede usar siempre el mismo mapa de normales, sin importar la orientación del plano a pintar. Este espacio de coordenadas es el espacio tangente.
+
+# Espacio tangente
+
+Los vectores normales en un mapa de normales están expresados en espacio tangente donde las normales siempre apuntan de manera general hacia la dirección positiva de `z`. El espacio tangente es un espacio local a la superficie de un triángulo, las normales son relativas a la referencia local de los triángulos individuales. Es el espacio local para los vectores del mapa de normales, todos están definidos apuntando a la dirección positiva de `z`, sin importar la dirección final transformada. Usando una matriz específica se pueden transformar vectores normales desde este espacio tangente a las coordenadas de mundo o de vista, orientándolos en la dirección de la superficie final.
+
+El mapa de normales está definido en espacio tangente, una manera de solucionar el problema es calcular una matriz que transforme las normales del espacio tangente a un espacio diferente de manera que estén alineadas con la dirección normal de la superficie, entonces los vectores normales estarán todos apuntando de manera general hacia la `y` positiva (según el ejemplo anterior). Lo bueno del espacio tangente es que se puede calcular dicha matriz para cualquier tipo de superficie para poder alinear de manera adecuada la dirección en `z` del espacio tangente a la dirección normal de la superficie.
+
+A esa matriz se le llama matriz `TBN` (`Tangent Bitangent Normal`). Se necesitan los vectores normales, tangentes y bitangentes para construir dicha matriz. Para construir esta matriz de cambio de base que transforma un vector en espacio tangente a un espacio de coordenadas distinto se necesitan tres vectores perpendiculares que estén alineados con la superficie de un mapa de normales, un vector `up`, un vector `right` y un vector `forward`, de manera similar a los que se necesitaban al construir una cámara.
+
+Se sabe que el vector `up` es el vector normal a la superficie, el vector `right` y el `forward` son los vectores tangente y bitangente.
+
+![Figure [res/021_004]: Vectores `TBN` en espacio tangente](res/021_004.png)
+
+Calcular los vectores tangente y bitangente no es tan sencillo como el vector normal. Se puede ver que la dirección de la tangente y bitangente del mapa de normales se alinean con la dirección en la cual se define las coordenadas de textura de la superficie. Se puede usar esto para calcular los vectores tangente y bitangente para cada superficie.
+
+![Figure [res/021_005]: Cálculo de Vectores `TBN`](res/021_005.png)
+
+Se puede observar que las diferencias en las coordenadas de textura en el borde $E_2$ de un triángulo indica como $\Delta U_2$ y $\Delta V_2$ están expresadas en la misma dirección que el vector tangente $T$ y el bitangente $B$. Con esto se pueden escribir ambos bordes $E_1$ y $E_2$ del triángulo como una combinación lineal del vector tangente $T$ y el bitangente $B$.
+
+\begin{equation}
+E_1 = \Delta U_1 T + \Delta V_1 B
+\end{equation}
+
+\begin{equation}
+E_2 = \Delta U_2 T + \Delta V_2 B
+\end{equation}
+
+Que se puede escribir como
+
+\begin{equation}
+(E_{1x}, E_{1y}, E_{1z}) = \Delta U_1 (T_x, T_y, T_z) + \Delta V_1 (B_x, B_y, B_z)
+\end{equation}
+
+\begin{equation}
+(E_{2x}, E_{2y}, E_{2z}) = \Delta U_2 (T_x, T_y, T_z) + \Delta V_2 (B_x, B_y, B_z)
+\end{equation}
+
+Se puede calcular  como el vector diferencia entre dos posiciones $\Delta U$ y $\Delta V$ como las diferencias entre las coordenadas de textura. Quedan dos incógnitas (tangente $T$ y bitangente $B$) y dos ecuaciones. La última ecuación permite escribirlo todo de una manera diferente, como una multiplicación de matrices.
+
+\begin{equation}
+\begin{bmatrix}
+E_{1x} & E_{1y} & E_{1z}\\
+E_{2x} & E_{2y} & E_{2z}
+\end{bmatrix}
+=
+\begin{bmatrix}
+\Delta U_1 & \Delta V_1\\
+\Delta U_2 & \Delta V_2
+\end{bmatrix}
+\cdot
+\begin{bmatrix}
+T_x & T_y & T_z\\
+B_x & B_y & B_z
+\end{bmatrix}
+\end{equation}
+
+Una ventaja de escribir las ecuaciones de manera matricial es que resolver $T$ y $B$ es mucho más obvio. Si se multiplican ambos lados de la ecuación por la inversa de la matriz $\Delta U \cdot \Delta V$ .
+
+\begin{equation}
+\begin{bmatrix}
+\Delta U_1 & \Delta V_1\\
+\Delta U_2 & \Delta V_2
+\end{bmatrix}
+^{-1}
+\cdot
+\begin{bmatrix}
+E_{1x} & E_{1y} & E_{1z}\\
+E_{2x} & E_{2y} & E_{2z}
+\end{bmatrix}
+=
+\begin{bmatrix}
+T_x & T_y & T_z\\
+B_x & B_y & B_z
+\end{bmatrix}
+\end{equation}
+
+Esto permite resolver $T$ y $B$. Hay que calcular la inversa de la matriz del `delta` de las coordenadas de textura. Para calcular la inversa de una matriz hay que dividir `1` por el determinante de la matriz multiplicado por la matriz de adjuntos traspuesta.
+
+\begin{equation}
+\begin{bmatrix}
+T_x & T_y & T_z\\
+B_x & B_y & B_z
+\end{bmatrix}
+=
+\frac{1}{\Delta U_1 \cdot \Delta V_2 - \Delta U_2 \cdot \Delta V_1}
+\cdot
+\begin{bmatrix}
+\Delta V_2 & -\Delta V_1\\
+-\Delta U_2 & \Delta U_1
+\end{bmatrix}
+\cdot
+\begin{bmatrix}
+E_{1x} & E_{1y} & E_{1z}\\
+E_{2x} & E_{2y} & E_{2z}
+\end{bmatrix}
+\end{equation}
+
+La ecuación final provee una fórmula para calcular el vector tangente $T$ y el vector bitangente $B$ a partir de dos lados de un triángulo y sus coordenadas de textura.
+
+# Cálculo de tangentes
+
+Asumiendo que el plano se construye con los siguientes vectores (que se juntan para formar triángulos como `1,2,3` y `1,3 ,4`).
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+// positions
+glm::vec3 pos1(-1.0f, 1.0f, 0.0f);
+glm::vec3 pos2(-1.0f, -1.0f, 0.0f);
+glm::vec3 pos3(1.0f, -1.0f, 0.0f);
+glm::vec3 pos4(1.0f, 1.0f, 0.0f);
+//texture coordinates
+glm::vec2 uv1(0.0f, 1.0f);
+glm::vec2 uv2(0.0f, 0.0f);
+glm::vec2 uv3(1.0f, 0.0f);
+glm::vec2 uv4(1.0f, 1.0f);
+//normal vector
+glm::vec3 nm(0.0f, 0.0f, 1.0f);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [quad]: Posiciones, uv's y vector normal de un `quad`]
+
+Primero se calculan los bordes del triángulo y las coordenadas delta UV.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glm::vec3 edge1 = pos2 - pos1;
+glm::vec3 edge2 = pos3 - pos1;
+glm::vec2 deltaUV1 = uv2 - uv1;
+glm::vec2 deltaUV2 = uv3 - uv1;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [edges_uv]: Cálculo de bordes y `delta UV`]
+
+Y a continuación se sigue la formula calculada anteriormente.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+float f = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
+
+tangent1.x = f * (deltaUV2.y * edge1.x - deltaUV1.y * edge2.x);
+tangent1.y = f * (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y);
+tangent1.z = f * (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z);
+tangent1 = glm::normalize(tangent1);
+
+bitangent1.x = f * (-deltaUV2.x * edge1.x + deltaUV1.x * edge2.x);
+bitangent1.y = f * (-deltaUV2.x * edge1.y + deltaUV1.x * edge2.y);
+bitangent1.z = f * (-deltaUV2.x * edge1.z + deltaUV1.x * edge2.z);
+bitangent1 = glm::normalize(bitangent1);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [edges_tb]: Cálculo de tangentes y bitangentes]
+
+Primero se calcula la parte fraccional de la ecuación, y para cada componente de cada vector se hace la correspondiente multiplicación de matriz por `f`. Se acaba haciendo una normalización para asegurarse de que los vectores tangente y bitangente acaban como vectores unitarios.
+
+Puesto que un triángulo es siempre una forma plana, solo se necesita calcular un solo par de tangente/bitangente para cada triángulo, puesto que serán los mismos para todos los vértices de ese triángulo. Muchas veces algunas implementaciones tienen triángulos que comparten vértices con otros triángulos, en ese caso se suele hacer la media de las propiedades de cada vértice como normales y tangentes/bitangentes para conseguir un resultado suave. En el ejemplo, los triángulos del plano comparten algunos vértices también, pero puesto que ambos triángulos son paralelos entre ellos no hace falta realizar ninguna media.
+
+Los vectores resultantes deben tener un valor de `(1,0,0)` y `(0,1,0)` respectivamente, que junto a la normal `(0,0,1)` forman la matriz ortogonal `TBN`.
+
+# Pintando con Normal Mapping
+
+Para hacer funcionar el `normal mapping` primero hay que crear la matriz `TBN` en los shaders. Se le pasa al shader de vértices los vectores tangente y bitangente como atributos de vértice.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec2 aUv;
+layout (location = 2) in vec3 aNormal;
+layout (location = 3) in vec3 aTangent;
+layout (location = 4) in vec3 aBitangent;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [tb_shader]: Normal, tangente y bitangente por vértice en el shader de vértices]
+
+Entonces se calcula la matriz TBN.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+vec3 T = normalize(vec3(normalMat * vec4(aTangent, 0.0)));
+vec3 B = normalize(vec3(normalMat * vec4(aBitangent, 0.0)));
+vec3 N = normalize(vec3(normalMat * vec4(aNormal, 0.0)));
+vec3 N = normalize(normalMat * aNormal);
+mat3 TBN = mat3(T, B, N);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [tbn]: Cálculo de matriz `TBN` en el shader de vértices]
+
+Primero se transforman todos los vectores `TBN` al sistema de coordenadas en que se quiere trabajar, que ahora es en espacio de mundo, multiplicando por la matriz `model` (en este caso por la matriz de normales puesto que solo importa la orientación de los vectores). Se crea la matriz `TBN` dándole al constructor de `mat3` los vectores relevantes.
+
+Incluso no hay necesidad de la bitangente en el shader de vértices, los tres vectores `TBN` son perpendiculares, así que se puede calcular la bitangente como el producto vectorial entre la normal y la tangente.
+
+Una vez calculada la matriz `TBN` hay dos maneras de usarla para `normal mapping`.
+
+- Usar la matriz `TBN` para transformar cualquier vector desde espacio tangente a espacio de mundo, dándoselo al shader de fragmentos y transformar la normal sampleada de espacio de tangente a espacio de mundo usando la matriz `TBN`. La normal está entonces en el mismo espacio que el resto de variables de iluminación, en espacio de mundo.
+
+- Se coge la inversa de la matriz `TBN` que transforma cualquier vector de espacio de mundo a espacio tangente y se usa no para transformar la normal, si no todas las otras variables de la iluminación al espacio tangente. La normal está entonces en el mismo espacio que el resto de variables de iluminación, en espacio de tangente.
+
+## En espacio de mundo
+
+El vector normal sampleado del mapa de normales está en espacio tangente, mientras que el resto de los vectores de iluminación (posición de la luz y de la vista) están expresados en espacio de mundo. Pasando la matriz `TBN` al shader de fragmentos, se puede multiplicar la normal sampleada en espacio de tangente por la matriz `TBN` para transformar el vector normal al espacio de mundo, como el resto de los otros vectores de iluminación. Así todos los cálculos de iluminación tienen sentido.
+
+En el shader de vértices se pasa la matriz `TBN` al shader de fragmentos.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+out mat3 TBN;
+
+mat3 TBN = mat3(T, B, N);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [tbn_out]: Pasar la matriz `TBN` al shader de fragmentos]
+
+En el shader de fragmentos se coge como variable de entrada y se usa para transformar el vector normal sampleado a espacio de mundo.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+in mat3 TBN;
+sampler2D normal_texture;
+
+void main() {
+  vec3 normal = vec3(texture(normal_texture, uv));
+  normal = normalize(normal * 2.0 - 1.0);
+  normal = normalize(TBN * normal);
+
+  //lighting model as usual
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [tbn_frag]: Usar la matriz `TBN` para pasar la normal a espacio de mundo]
+
+Puesto que la normal resultante está en espacio de mundo no hay que cambiar nada más del shader de fragmentos.
+
+## En espacio de tangente
+
+Se calcula la inversa de la matriz `TBN` para transformar todos los vectores relevantes al espacio en el que están las normales sampleadas, el espacio tangente. La construcción de la matriz `TBN` es la misma, pero primero se invierte antes de mandarla al shader de fragmentos.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+mat3 TBN = transpose(mat3(T, B, N));
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [tbn_out]: Pasar la matriz `TBN` al shader de fragmentos]
+
+Se usa la función `transpose` en lugar de la función `inverse`. Una propiedad de las matrices ortogonales (cada eje es un vector unitario perpendicular) es que su traspuesta es igual a su inversa. Y puesto que calcular la inversa es una operación costosa y calcular la traspuesta es barato, es interesante aprovechar esta propiedad.
+
+En el shader de fragmentos no se transforma el vector normal, si no los otros vectores relevantes al espacio tangente, los vectores de la dirección de la luz y de la vista. Entonces todos los vectores están en el mismo sistema de coordenadas, el espacio tangente.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+in mat3 TBN;
+sampler2D normal_texture;
+
+void main() {
+  vec3 normal = vec3(texture(normal_texture, uv));
+  normal = normalize(normal * 2.0 - 1.0);
+
+  vec3 lightDir = TBN * normalize(lightPos - fragPos);
+  vec3 viewDir = TBN * normalize(viewPos - fragPos);
+
+  //lighting model as usual
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [tbn_tangent_space]: Pasar los vectores de la luz y la cámara a espacio tangente]
+
+Este segundo método parece más largo y requiere más multiplicaciones en el shader de fragmentos (que son más costosos). Pero transformar los vectores de espacio de mundo a espacio tangente tiene la ventaja añadida que se pueden transformar en el shader de vértices en lugar de hacerlo en el shader de fragmentos. Esto funciona porque `lightPos` y `viewPos` no cambian para cada fragmento y para la entrada `fragPos` se puede calcular su posición en espacio de tangente en el shader de vértices y dejar que la interpolación haga su trabajo. Ya no hay necesidad de transformar los vectores a espacio tangente en el shader de fragmentos, pero sí es necesario en el primer método puesto que los vectores normales sampleados son específicos para cada fragmento.
+
+Así pues, en lugar de enviar la inversa de la matriz `TBN` al shader de fragmentos se envían la posición de la luz, de la vista y del vértice en espacio tangente al shader de fragmentos. Esto ahorra muchas multiplicaciones de matrices en el shader de fragmentos. Es una buena optimización puesto que el shader de vértices se ejecuta muchas menos veces que el de fragmentos. Lo que hace a este método el preferido.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+out vec2 uv;
+out vec3 tangentLightPos;
+out vec3 tangentViewPos;
+out vec3 tangentFragPos;
+
+uniform vec3 viewPos;
+uniform vec3 lightPos;
+
+void main() {
+  //...
+  mat3 TBN = transpose(mat3(T, B, N));
+
+  tangentLightPos = TBN * lightPos;
+  tangentViewPos = TBN * viewPos;
+
+  vec3 fragPos = vec3(model * vec4(aPos, 1.0));
+  tangentFragPos = TBN * fragPos;
+  //...
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [tbn_tangent_space_vert]: Pasar las posiciones de la luz, cámara y fragmente a espacio tangente en el shader de vértices]
+
+En el shader de fragmentos se usan esas variables de entrada para calcular la iluminación en espacio tangente. Puesto que el vector normal sampleado ya está en espacio tangente la iluminación funciona.
+
+![Figure [res/021_006]: `Normal Mapping`](res/021_006.png)
+
+## Objetos complejos
+
+Calcular los vectores tangentes y bitangentes no es algo que se haga habitualmente, la mayoría de las veces se implementa solo una vez en el cargador de modelos, o si se usa una librería como *Assimp* éste ya lo hace.
+
+En *Assimp* a la hora de cargar un modelo se le puede pasar el `flag` `aiProcess_Calc_TangentSpace`, así calcula vectores tangentes y bitangentes para cada uno de los vértices cargados. En el apartado de carga de modelos ya se tenían en cuenta la importación y uso de tangentes y bitangentes, así como el uso de mapas de normales.
+
+Usar ese `flag` en *Assimp* no siempre funciona, el cálculo de tangentes se basa en las coordenadas de textura y algunos artistas usan algunos trucos como hacer un espejo de las superficies de una textura sobre un modelo haciendo espejo también de las coordenadas de textura, y esto da resultados incorrectos al calcular las tangentes.
+
+Usar `normal mapping` es una buena manera de mejorar el rendimiento del pintado de una escena, antes había que usar un gran número de vértices para conseguir un buen detalle, pero con esta técnica se puede presentar un nivel de detalle parecido usando muchos menos vértices.
+
+![Figure [res/021_007]: Figura sin `Normal Mapping`, con muchos polígonos y con `Normal Mapping`](res/021_007.png)
+
+## Ortogonalización
+
+Cuando los vectores tangentes se calculan en mallas grandes que comparten muchos vértices los vectores tangentes se suelen promediar para dar resultados suavizados cuando el `normal mapping` se aplica a esas superficies. Un problema de esta aproximación es que entonces los tres vectores `TBN` pueden acabar por no ser perpendiculares, lo que significa que la matriz `TBN` ya no es ortogonal.
+
+Usando un algoritmo matemático llamado proceso de ortogonalización de `Gram-Schmidt` se pueden reortogonalizar los vectores `TBN` de manera que vuelvan a ser perpendiculares. En el shader de vértices se puede calcular.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+vec3 T = normalize(normalMat * aTangent);
+vec3 N = normalize(normalMat * aNormal);
+T = normalize(T - dot(T, N) * N);
+vec3 B = cross(N, T);
+
+mat3 TBN = transpose(mat3(T, B, N));
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [orto]: Ortogonalización en el shader de vértices]
+
+Esto mejora el aspecto del `normal mapping` con un pequeño coste extra.
+
+# Ejercicios
+
+- A partir de la escena con dos quads, implementar el normal mapping en espacio de mundo.
+- Usar el importador de modelos para crear una escena con algún modelo complejo y pintarlo usando `normal mapping` con el modelo de iluminación `Blinn`.
+
+<link rel="stylesheet" href="res/md/viu.css">
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'long'};</script>
+<!-- Markdeep: --><script src="res/md/markdeep.min.js?" charset="utf-8"></script>

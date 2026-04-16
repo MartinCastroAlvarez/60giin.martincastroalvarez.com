@@ -1,0 +1,436 @@
+<meta charset="utf-8">
+**60GIIN - 024 - Shadowmaps**
+    <small>©2026 VIU - 60GIIN Programación Gráfica - Iván Fuertes</small>
+
+# Introducción
+
+Las sombras son el resultado de la ausencia de luz debido a la oclusión, cuando un rayo de luz que proviene de una fuente de luz no alcanza a un objeto porque ha sido ocluido por otro objeto, entonces el objeto está en la sombra. Las sombras añaden un grado de realismo a las escenas iluminadas y hace más sencillo a un observador apreciar las relaciones espaciales entre objetos. Dan a la escena un sentido de profundidad.
+
+![Figure [res/024_001]: Escena sin sombras](res/024_001.png)
+
+![Figure [res/024_002]: Escena con sombras](res/024_002.png)
+
+Se puede apreciar fácilmente que con sombras es mucho más obvio como se relacionan unos objetos con otros. El hecho de que un objeto está flotando sobre los otros es mucho más apreciable en la escena cuando se tienen sombras.
+
+Pero las sombras son complicadas de implementar porque en el sistema actual de pintado en tiempo real (con gráficos rasterizados) el algoritmo de sombras perfecto aún no ha sido desarrollado. Hay muchas aproximaciones, pero todas tienen algún pequeño problema que hay que tener en cuenta para que la simulación funcione.
+
+Una técnica usada en muchos videojuegos que da buenos resultados, es relativamente fácil de implementar y no consume muchos recursos es el `shadow mapping`.
+
+# Shadow Mapping
+
+La idea detrás del `shadow mapping` es bastante sencilla, se pinta la escena desde el punto de vista de la luz y todo lo que se ve desde la perspectiva de la luz está iluminado, y todo lo que no se ve está en sombra. Se tiene una sección de un suelo con un cubo entre él y la fuente de luz. Puesto que la fuente de luz puede ver este cubo y no la sección del suelo, entonces cuando se mira en dirección a esa sección específica del suelo, debe estar en sombra.
+
+![Figure [res/024_003]: Secciones iluminadas y en sombra](res/024_003.png)
+
+Las líneas azules representan los fragmentos que la luz puede ver y por tanto está iluminados. Los fragmentos ocluidos se muestran con líneas negras, y se pintan en penumbra. Si hubiera que dibujar una línea o rayo desde la fuente de luz a un fragmento en el cubo de la derecha se puede apreciar que el rayo primero golpea contra el cubo flotante de delante antes de llegar al cubo de la derecha. Como resultado, el fragmento del cubo flotante está iluminado y el del cubo de la derecha está en sombra.
+
+Se necesita conseguir el punto donde el rayo golpee antes y compararlo con los demás puntos en ese rayo. Entonces se hace un test sencillo para ver si la posición del rayo en un punto está más lejana de la fuente de luz que el punto más cercano, y si es así, entonces el punto que se prueba está en la sombra. Iterar sobre los miles de rayos de luz de una fuente de luz es una aproximación muy ineficiente y no se adapta demasiado bien al pintado en tiempo real. Se puede hacer algo similar, pero sin lanzar rayos de luz. En su lugar, se usa un buffer de profundidad.
+
+En el buffer de profundidad un valor corresponde a la profundidad de un fragmento entre 0 y 1 desde el punto de vista de la cámara. ¿Y si se pintara la escena desde la perspectiva de la luz y se guardaran los valores de profundidad resultantes en una textura? De esta manera se puede samplear el valor de profundidad más cercano tal como se ve desde el punto de vista de la cámara. Después de todo, los valores de profundidad muestran el primer fragmento visible desde el punto de vista de la cámara. Se guardan esos valores de profundidad en una textura que se llama `depth map` o `shadow map`.
+
+![Figure [res/024_004]: Técnica de `ShadowMapping`](res/024_004.png)
+
+La imagen de la izquierda muestra una luz direccional (todos los rayos son paralelos) proyectando una sombra sobre una superficie debajo de un cubo. Usando los valores de profundidad almacenados en el `depth map` se puede encontrar el punto más cercano a la luz y usar eso para determinar si un fragmento está o no en la sombra. Se crea un mapa de profundidad pintando la escena (desde el punto de vista de la luz) usando una matriz de vista y de proyección específicas para esa fuente de luz. Estas dos matrices conjuntamente forman una matriz de transformación `T` que transforma cualquier posición 3D en el espacio de coordenadas de la luz visible.
+
+En la imagen derecha se ve la misma luz direccional y a la cámara. Se pinta un fragmento en una posición `P` para el cual hay que determinar si esté en sombra o no. Para hacerlo, primero se transforma el punto `P` al espacio de coordenadas de la luz mediante la matriz `T`. Puesto que ahora el punto `P` se ve desde el punto de vista de la luz, su coordenada `z` corresponde a su profundidad (en el ejemplo 0.9). Usando el punto `P` también se puede indexar el mapa de profundidad para obtener la profundidad más cercana a la luz que en ese punto es `C` (con un valor de 0.4). El sampleo al mapa de profundidad devuelve un valor de profundidad menor que la profundidad del punto `P`, por lo tanto, el punto `P` está ocluido y en la sombra.
+
+La técnica de `shadow mapping` consiste en dos pasadas, en la primera se pinta el mapa de profundidad y en la segunda se pinta la escena como es habitual, pero se usa el mapa de profundidad generado para calcular si el fragmento está iluminado o en la sombra.
+
+# Mapas de Profundidad
+
+La primera pasada requiere generar un mapa de profundidad, que es una textura de profundidad desde la perspectiva de la luz que se usará para calcular las sombras. Puesto que se necesita almacenar el resultado de pintado de una escena en una textura se usarán `framebuffers`.
+
+Primero se crea el `framebuffer` para pintar el mapa de profundidad.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+uint32_t fbo;
+glGenFramebuffers(1, &fbo);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [fbo]: Crear `framebuffer`]
+
+Y se crea una textura que se usará como buffer de profundidad.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+uint32_t depthMap;
+glGenTextures(1, &depthMap);
+glBindTexture(GL_TEXTURE_2D, depthMap);
+glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, 1024, 1024, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [texture]: Crear textura para el buffer de profundidad]
+
+Generar el mapa de profundidad no es complicado, puesto que solo importan los valores de profundidad se le específica a la textura el formato como `GL_DEPTH_COMPONENT`. También se le da a la textura un tamaño de `1024 x 1024`, es la resolución del mapa de profundidad.
+
+Con la textura de profundidad generada se le adjunta al `framebuffer` como buffer de profundidad.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+glBindTexture(GL_TEXTURE_2D, 0);
+glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
+glDrawBuffer(GL_NONE);
+glReadBuffer(GL_NONE);
+glBindFramebuffer(GL_FRAMEBUFFER, 0);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [bind_fbo]: Adjuntar textura al `framebuffer`]
+
+Solo se necesita la información de profundidad cuando se pinta la escena desde la perspectiva de la luz, así que no hay necesidad de buffer de color. Sin embargo, un `framebuffer` no está completo sin un buffer de color, así que hay que decirle a *OpenGL* explícitamente que no se va a pintar ningún dato de color. Se hace poniendo la lectura y escritura al buffer a `GL_NONE` con `glDrawBuffer` y `glReadBuffer`.
+
+Con un `FBO` configurado que pinta valores de profundidad a una textura se puede empezar la primera pasada, generar el mapa de profundidad. La secuencia acaba siendo algo como esto:
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+// 1st Pass
+glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+glViewport(0, 0, k_shadow_width, k_shadow_height);   //1024 x 1024
+glClear(GL_DEPTH_BUFFER_BIT);
+configureShader();
+renderScene();
+glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+// 2nd Pass
+glViewport(0, 0, screen_width, screen_height);
+glClear(GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT);
+configureShader();
+glBindTexture(GL_TEXTURE_2D, tex_fbo);
+renderScene();
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [2passes]: Las dos pasadas]
+
+Lo realmente importante son las llamadas a `glViewPort`. Puesto que los `shadow maps` muchas veces tienen diferentes resoluciones respecto a cómo se pinta originalmente la escena (por norma a la resolución de la pantalla), se necesitan cambiar los parámetros de los `viewports` para acomodar el tamaño del `shadow map`. Si se olvida esta parte, el mapa de profundidad resultante estará incompleto o muy pequeño.
+
+## Transformación a espacio de luz
+
+En la segunda pasada, la configuración del shader y las matrices de transformación es la habitual, hay que asegurarse de que las matrices correctas de vista y de proyección se usan y las matrices model de los objetos. Sin embargo, en la primera pasada se usan unas matrices de vistas y proyección diferentes para pintar la escena desde el punto de vista de la luz.
+
+Puesto que se está modelando una luz direccional todos sus rayos son paralelos. Por esta razón se va a usar una matriz de proyección ortográfica para la fuente de luz donde no hay deformación por la perspectiva.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+const float k_shadow_near = 1.0f;
+const float k_shadow_far = 7.5f;
+
+glm::mat4 lightProjection = glm::ortho(-10.0f, 10.0f, -10.0f, 10.0f, k_shadow_near, k_shadow_far);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [light_proj]: Matriz de proyección de la luz]
+
+Una matriz de proyección determina el rango de lo que está visible, lo que supone que hay que asegurarse de que el tamaño correcto de la misma para que contenga los objetos que deben estar en el mapa de profundidad. Cuando los objetos o fragmentos no están en el mapa de profundidad no producen sombras.
+
+Para crear la matriz para transformar cada objeto al espacio de luz, se usa la función de `GLM` `lookAt`, con la luz de la posición y mirando al centro de la escena.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glm::mat4 lightView = glm::lookAt(lightPos, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [light_view]: Matriz de vista de la luz]
+
+Combinando esas dos matrices se obtiene una matriz de transformación al espacio de luz, que transforma un vector que está en espacio de mundo al espacio visible desde la fuente de luz, como se necesita para pintar el mapa de profundidad.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glm::mat4 lightSpaceMatrix = lightProjection * lightView;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [light_space]: Matriz de transformacion completa]
+
+Esta es la matriz que antes se denominaba `T`. Con esta matriz se puede pintar la escena de la manera habitual, mientras se le dé al shader las matrices de proyección y vista para el espacio de luz. Sin embargo, solo importan los valores de profundidad y no todos los cálculos complicados de los fragmentos. Para ahorrar rendimiento se usa un shader mucho más simple para pintar el mapa de profundidad.
+
+## Pintar al mapa de profundidad
+
+Cuando se pinta la escena desde el punto de vista de la luz, se usa un shader de vértices que solo transforma los vértices al espacio de la luz.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+layout (location = 0) in vec3 aPos;
+
+uniform mat4 model;
+uniform mat4 lightSpaceMatrix;
+
+void main() {
+  gl_Position = lightSpaceMatrix * model * vec4(aPos, 1.0);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [vertex_depth]: Shader de vértices para el mapa de profundidad]
+
+Puesto que no hay buffer de color los fragmentos no requieren de ningún procesamiento, así que se usa un shader de fragmentos vacío.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+
+void main() {}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [fragment_depth]: Shader de fragmentos para el mapa de profundidad]
+
+Pintar el buffer de profundidad se consigue así:
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+s_depth.use();
+s_depth.set("lightSpaceMatrix", lightSpaceMatrix);
+
+glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+glViewport(0, 0, k_shadow_width, k_shadow_height);
+glClear(GL_DEPTH_BUFFER_BIT);
+glEnable(GL_DEPTH_TEST);
+renderScene(s_depth);
+glBindFramebuffer(GL_FRAMEBUFFER, 0);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [1stpass]: Primera pasada para pintar al mapa de profundidad]
+
+La función `renderScene` coge un shader, hace las llamadas a pintado y pone las matrices `model` correctas. El resultado es un buffer de profundidad relleno que tiene la profundidad más cercana a cada fragmento visible desde el punto de vista de la luz.
+
+![Figure [res/024_005]: Buffer de profundidad](res/024_005.png)
+
+# Pintando sombras
+
+Con el mapa de profundidad lleno se pueden empezar a generar las sombras. El código para verificar si un fragmento está en la sombra se ejecuta en el shader de fragmentos, pero se hace la transformación al espacio de luz en el shader de vértices.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec2 aUv;
+layout (location = 2) in vec3 aNormal;
+
+uniform mat4 model;
+uniform mat4 view;
+uniform mat4 proj;
+uniform mat3 normalMat;
+uniform mat4 lightSpaceMatrix;
+
+out vec3 normal;
+out vec3 fragPos;
+out vec2 uv;
+out vec4 fragPosLightSpace;
+
+void main() {
+  uv = aUv;
+  normal = normalMat * aNormal;
+  fragPos = vec3(model * vec4(aPos, 1.0));
+  fragPosLightSpace = lightSpaceMatrix * vec4(fragPos, 1.0);
+  gl_Position = proj * view * model * vec4(aPos, 1.0);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [vertex_color]: Shader de vértices para pintar la escena]
+
+La novedad en este shader es la variable de salida `FragPosLightSpace`. Se toma la matriz `lightSpaceMatrix` y se transforma la posición del vértice del espacio de mundo al espacio de luz. El shader de vértices entonces pasa al shader de fragmentos la posición del vértice transformada a espacio de mundo en el `FragPos` como siempre y una posición transformada a espacio de luz `FragPosLightSpace`.
+
+El shader de fragmentos usa el modelo de iluminación `Blinn/Phong`. Se calcula un valor de sombra que es `1.0` cuando el fragmento está en sombra y `0.0` cuando está iluminado. Los colores de difuso y specular se multiplican por este valor de sombra. Puesto que las sombras en la realidad raramente están completamente a oscuras debido a la dispersión de la luz, se deja el componente ambient fuera de las multiplicaciones de la sombra.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+
+out vec4 FragColor;
+
+in vec3 normal;
+in vec3 fragPos;
+in vec2 uv;
+in vec4 fragPosLightSpace;
+
+uniform sampler2D depthMap;
+
+struct Material {
+  sampler2D diffuse;
+  sampler2D specular;
+  int shininess;
+};
+uniform Material material;
+
+struct Light {
+  vec3 position;
+
+  vec3 ambient;
+  vec3 diffuse;
+  vec3 specular;
+};
+uniform Light light;
+
+uniform vec3 viewPos;
+
+float ShadowCalculation(vec4 fragPosLightSpace) {...}
+}
+
+void main() {
+  vec3 albedo = vec3(texture(material.diffuse, uv));
+  vec3 ambient = albedo * light.ambient;
+
+  vec3 norm = normalize(normal);
+  vec3 lightDir = normalize(light.position - fragPos);
+  float diff = max(dot(norm, lightDir), 0.0);
+  vec3 diffuse = diff * albedo * light.diffuse;
+
+  vec3 viewDir = normalize(viewPos - fragPos);
+  vec3 halfwayDir = normalize(lightDir + viewDir);
+  float spec = pow(max(dot(norm, halfwayDir), 0.0), material.shininess);
+  vec3 specular = spec * vec3(texture(material.specular, uv))  * light.specular;
+
+  float shadow = ShadowCalculation(fragPosLightSpace);
+
+  vec3 phong = ambient + ((1.0 - shadow) * (diffuse + specular));
+  FragColor = vec4(phong, 1.0);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [fragment_color]: Shader de fragmentos para pintar la escena]
+
+Se ha añadido el cálculo de la sombra en la función `ShadowCalculation`, además de tomar como parámetros extra el mapa de profundidad (de la primera pasada respecto de la luz) y la nueva variable de la posición del fragmento en espacio de luz.
+
+Lo primero que hay que hacer para verificar si un fragmento está en la sombra es transformar la posición del fragmento en espacio de clip a las coordenadas normalizadas. Cuando se devuelve una posición de vértice en espacio de clip a `gl_Position` en el shader de vértices, *OpenGL* automáticamente hace la división de perspectiva, transforma las coordenadas en espacio de clip del rango `[-w, w]` al rango `[-1, 1]`, dividiendo los componentes `x`,`y` y `z` por el componente `w`. Puesto que el `FragPosLightSpace` no se pasa a clip space por el `gl_Position`, hay que hacer la división de perspectiva a mano.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+float ShadowCalculation(vec4 fragPosLightSpace, float bias) {
+  vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+  ...
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [proj_coords]: División de perspectiva para el fragmento en espacio de luz]
+
+Esto convierte la posición del fragmento en espacio de luz al rango `[-1, 1]`. Al usar una matriz de proyección ortográfica el componente `w` del vértice no se toca, así que este paso es poco significativo. Sin embargo, es necesario cuando se usa una proyección perspectiva, así que hacerlo es buena idea para asegurar que funciona siempre.
+
+Puesto que la profundidad en el mapa de profundidad está en el rango `[0, 1]` y se quiere usar el valor calculado `projCoords` para samplear del mapa de profundidad se transforman las coordenadas en espacio normalizado al rango `[0, 1]`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+projCoords = projCoords * 0.5 + 0.5;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [proj_coords_range]: Fragmento en espacio de luz en el rango `[0, 1]`]
+
+Con estas coordenadas proyectadas se puede samplear el mapa de profundidad, puesto que estas coordenadas corresponden con las coordenadas transformadas a espacio normalizado de la primera pasada. Esto devuelve la profundidad más cercana desde el punto de vista de la luz.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+float closestDepth = texture(depthMap, projCoords.xy).r;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [closest_depth]: Valor sampleado en el mapa de profundidad de la luz]
+
+Para conseguir la profundidad del fragmento actual simplemente se coge la coordenada `z` del vector proyectado, que es la profundidad del fragmento desde el punto de vista de la luz.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+float currentDepth = projCoords.z;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [currentDepth]: Profundidad del fragmento actual desde la luz]
+
+La comparación es simplemente verificar si el `current` es mayor que el `closest`, y si lo es el fragmento está en sombra.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+float shadow = currentDepth > closestDepth ? 1.0 : 0.0;
+return shadow;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [check_depth]: Verificar la profundidad del fragmento actual desde la luz respecto del almacenado en el buffer de profundidad]
+
+Activando el shader, pasando las texturas apropiadas, usando las matrices correctas en la segunda pasada, se tiene la primera aproximación de las sombras.
+
+![Figure [res/024_006]: Sombras](res/024_006.png)
+
+# Mejorando sombras
+
+Se ha conseguido generar las sombras con la técnica del `shadow mapping`, pero se pueden ver ciertos artefactos en las superficies que hay que arreglar para conseguir resultados mejores.
+
+## Shadow acne
+
+En la imagen anterior se puede ver un patrón `Moiré` muy obvio. Se puede ver que gran parte del suelo tiene unas líneas negras alternas. Este artefacto es el llamado `shadow acné` y se puede explicar con la siguiente imagen.
+
+![Figure [res/024_007]: Shadow Acne](res/024_007.png)
+
+Puesto que el mapa de sombras tiene una resolución limitada, muchos fragmentos pueden samplear el mismo valor del mapa de profundidad cuando están relativamente lejos de la fuente de luz. La imagen muestra el suelo donde cada panel representa un solo `texel` del mapa de profundidad. Y muchos fragmentos samplean el mismo valor de profundidad.
+
+Esto se convierte en un problema cuando la fuente de luz mira en ángulo hacia la superficie, como en este caso, donde el mapa de profundidad está pintado también desde un ángulo. Muchos fragmentos acceden al mismo `texel` de profundidad mientras que otros están por debajo o por encima del suelo, se tiene una discrepancia en la sombra. Por eso a algunos fragmentos se les juzga en sombra y a otros no, dando el patrón a rayas.
+
+Se puede solucionar esto con un pequeño truco, usando un `shadow bias`, un pequeño `offset` con la profundidad de la superficie (o del `shadow map`) con una desviación de tal manera que a los fragmentos ya no se les considera por debajo de la superficie.
+
+![Figure [res/024_008]: Shadow Bias](res/024_008.png)
+
+Con el `bias` aplicado a todos los samples se consigue una profundidad un poco más pequeña que la profundidad de la superficie, así toda la superficie se ilumina correctamente sin sombras.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+float bias = max(0.05 * (1.0 - dot(norm, lightDir)), 0.005);
+float shadow = currentDepth - bias > closestDepth ? 1.0 : 0.0;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [bias]: Uso del `bias` para evitar el `shadow acne`]
+
+Un bias constante de `0.005` puede solucionar los problemas en la mayoría de las escenas, pero algunas superficies tienen un ángulo tan pronunciado que la fuente de luz aún produciría `shadow acné`. Una aproximación mejor sería cambiar la cantidad de `bias` en función del ángulo hacia la luz, a través del producto escalar.
+
+Aquí se tiene un `bias` máximo de `0.05` y un mínimo de `0.005` basándose en la normal de la superficie y la dirección de la luz. De esta manera superficies como el suelo que son casi perpendiculares a la fuente de luz tienen un `bias` pequeño, mientras que superficies como los lados de los cubos tienen un `bias` mucho mayor. Ajustar los valores de `bias` correctos requiere de hacer pruebas y personalizar valores para cada escena, pero casi siempre es cuestión de incrementarlo hasta que desaparezca.
+
+![Figure [res/024_009]: Escena sin Acne](res/024_009.png)
+
+## Peter panning
+
+Una desventaja de usar un `shadow bias` es que se está aplicando un `offset` a la profundidad de los objetos. Como resultado el `bias` puede ser lo suficientemente grande para mostrar un `offset` visible en las sombras comparado a las posiciones de los objetos.
+
+![Figure [res/024_010]: Peter Panning](res/024_010.png)
+
+A este artefacto se le llama `Peter Panning`, puesto que los objetos parece que no estén atados a sus sombras. Se puede usar un pequeño truco que lo soluciona, usando el `culling` de las caras frontales al pintar el mapa de profundidad. Por defecto *OpenGL* no pinta las caras traseras, diciéndole que se quiere ocultar las caras frontales se cambia eso.
+
+Puesto que solo se necesitan valores de profundidad no debería importar para objetos sólidos si se coge la profundidad de sus caras delanteras o traseras. Usar la profundidad de sus caras traseras no da los resultados erróneos, puesto que no importa si se tienen o no sombras en el interior de los objetos.
+
+![Figure [res/024_011]: Sombras según el culling](res/024_011.png)
+
+Poner el `culling` a caras frontales antes de pintar la escena con el mapa de profundidad y luego volviendo a poner el `culling` a caras posteriores para el resto soluciona el problema. Pero solo para objetos sólidos que tienen un interior sin aperturas. En el suelo no funcionaría puesto que hacer `culling` sobre la cara frontal eliminaría completamente el suelo de la ecuación.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glCullFace(GL_FRONT);
+renderScene(s_depth);
+glCullFace(GL_BACK);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [culling]: Cambiar el `culling` a caras frontales en la primera pasada para evitar el `Peter panning`]
+
+## Over sampling
+
+Otra discrepancia visual es que muchas regiones fuera del `frustum` visible de la luz se consideran en sombra mientras que no lo están. Esto pasa porque las coordenadas proyectadas fuera del `frustum` de la luz son mayores que `1.0` y samplean la textura de profundidad fuera de su rango por defecto de `[0, 1]`. Basándose en el método de `wrapping` de la textura se consiguen valores de profundidad incorrectos.
+
+![Figure [res/024_012]: Zonas en completa sombra](res/024_012.png)
+
+Se puede ver en la imagen que hay una región imaginaria de luz y la parte de arriba está en la sombra, esta área representa el tamaño del mapa de profundidad proyectado en el suelo. Esto sucede porque se puso el método de `wrapping` del mapa de profundidad a `GL_REPEAT`.
+
+Lo que hay que hacer es conseguir que todas las coordenadas fuera del rango del mapa de profundidad tengan una profundidad de `1.0`, para que nunca aparezcan en sombra (ningún objeto puede tener una profundidad mayor que `1.0`). Se puede conseguir este efecto guardando un color de borde a la textura y poniendo su `wrapping` a `GL_CLAMP_TO_BORDER`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+
+float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [wrapping]: Cambiar el `wrapping` de la textura del mapa de profundidad]
+
+Pese a todo aún puede quedar un parte mostrando una región oscura. Esas son las coordenadas fuera del plano `far` del `frustum` ortográfico de la luz. Una coordenada proyectada está más lejos del plano `far` cuando su coordenada `z` es mayor que `1.0`. En ese caso el `GL_CLAMP_TO_BORDER` no funciona puesto que se compara el componente `z` de la coordenada con los valores del mapa de profundidad, que siempre devuelve verdadero para `z´s` mayores a `1.0`.
+
+El arreglo para esto es simplemente forzar al valor `shadow` a ser `0.0` siempre que el componente `z` del vector proyectado sea mayor que `1.0`, en los cálculos de la sombra en el shader de fragmentos.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+if (projCoords.z > 1.0) {
+  shadow = 0.0;
+}
+
+return shadow;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [clamp]: Forzar el valor a `0.0` de la sombra]
+
+## Percentage closer filtering
+
+Las sombras están mucho mejor, pero aún hay algo que no funciona, si se acerca mucho se aprecia la dependencia a la resolución del mapa de profundidad, con dientes de sierra muy marcados
+
+![Figure [res/024_013]: Sombras con dientes de sierra](res/024_013.png)
+
+Puesto que el mapa de profundidad tiene una resolución fija, la profundidad muchas veces se extiende más de un fragmento por `texel`. Como resultado muchos fragmentos samplean el mismo valor de profundidad del mapa de profundidad y llegan a la misma conclusión sobre su sombra, lo que produce esos bloques serrados. Se pueden reducir aumentando la resolución del mapa de profundidad, o ajustando el `frustum` de la luz acercándolo lo más posible a la escena.
+
+Otra solución es usar una técnica llamada `PCF` (`Percentage Closer Filtering`). La idea es samplear más de una vez del mapa de profundidad, cada vez con unas coordenadas de textura ligeramente distintas. Para cada simple individual se verifica si está en sombra o no. Todos los resultados se combinan y se hace una media para conseguir una sombra suave.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+float shadow = 0.0;
+vec2 texelSize = 1.0 / textureSize(depthMap, 0);
+for(int x = -1; x <= 1; ++x) {
+  for(int y = -1; y <= 1; ++y) {
+    float pcfDepth = texture(depthMap, projCoords.xy + vec2(x, y) * texelSize).r;
+    shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
+  }
+}
+shadow /= 9.0;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [pcf]:  `PCF` (`Percentage Closer Filtering`)]
+
+La función `textureSize` devuelve un `vec2` con el ancho y alto de la textura en el nivel `0` de `mipmap`. Dividiendo `1` por esto se obtiene el tamaño de un solo `texel` que se usa para el `offset` de las coordenadas de textura, asegurando que cada sample nuevo samplea un valor de profundidad distinto. Se samplean `9` valores alrededor de las coordenadas proyectadas de `x` e `y`, se verifica si están en sombra o no, y se hace una media de los resultados por el total de samples tomados. Usando más samples o variando el `texelSize` se puede incrementar la calidad de las sombras suaves.
+
+![Figure [res/024_014]: Sombras con `PCF`](res/024_014.png)
+
+# Ejercicios
+
+- Usando la misma escena, implementar las sombras que genera una fuente de luz de tipo SpotLight (http://www.opengl-tutorial.org/intermediate-tutorials/tutorial-16-shadow-mapping/  -> sección spotlights).
+- Usando la misma escena, implementar un sistema con dos luces, donde ambas generan sombras (Pintar las fuentes de luces con sendas esferas blancas para localizarlas en la escena 3D).
+
+<link rel="stylesheet" href="res/md/viu.css">
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'long'};</script>
+<!-- Markdeep: --><script src="res/md/markdeep.min.js?" charset="utf-8"></script>

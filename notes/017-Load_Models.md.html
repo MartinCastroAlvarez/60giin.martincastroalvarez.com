@@ -1,0 +1,481 @@
+<meta charset="utf-8">
+**60GIIN - 017 - Carga de Modelos**
+    <small>©2026 VIU - 60GIIN Programación Gráfica - Iván Fuertes</small>
+
+# Introducción
+
+Hasta ahora en todas las escenas se han usado geometrías básicas, quads, cubos, esferas,... pero en las aplicaciones gráficas habituales hay muchos modelos complicados que tienen mejor aspecto que un contenedor estático. Sin embargo, para estos modelos complejos como casas, vehículos, personajes,... no se pueden definir sus vértices manualmente. Lo que se desea es importar estos modelos dentro de la aplicación, modelos que han sido diseñados por artistas 3D en herramientas como *Blender*, *3DS Max* o *Maya*.
+
+Estas herramientas de modelado 3D permiten a los artistas crear formas complejas y aplicarles texturas mediante un proceso llamado mapeado uv (`uv mapping`). Estas herramientas automáticamente generan todas las coordenadas para los vértices, las normales, coordenadas de textura, al exportar los modelos a un formato de fichero. De esta manera, los artistas tienen muchas herramientas para crear modelos de alta calidad sin tener que preocuparse mucho de los detalles técnicos. Todos esos aspectos técnicos quedan ocultos en el fichero con el modelo exportado, lo cual es trabajo de los programadores gráficos.
+
+Hay que leer el fichero con los modelos exportados, interpretarlo y extraer la información relevante para que se pueda almacenar en un formato que *OpenGL* pueda entender. Un problema común es que hay decenas de formatos diferentes y cada uno exporta los datos de una manera distinta. Formatos como `.obj` de `WaveFront` solo contiene datos del modelo con muy poca información de los materiales, como colores o mapas difusos o speculares, mientras que formatos como el `Collada` contienen multitud de información sobre modelos, luces, tipos de materiales, animaciones, cámaras, datos de la escena,... El formato `obj` de `WaveFront` es considerado uno de los más sencillos de interpretar.
+
+Si se quiere importar un modelo de algunos de los formatos existentes hay que escribir un importador específico para cada uno de los formatos a los que se quiera dar soporte, pero afortunadamente hay librerías para esto.
+
+# Assimp
+
+Una librería muy popular de carga de modelos es *Assimp*, *Open Asset Import Library*. Es capaz de importar desde decenas de formatos distintos, e incluso exportar. Lo hace cargando todos los datos de los modelos en unas estructuras de datos generalizadas. Tan pronto como *Assimp* ha cargado el modelo, se pueden obtener todos los datos necesarios desde esas estructuras de datos. Puesto que esas estructuras de datos se mantienen idénticas, sin importar el tipo de formato importado, se abstrae de cualquier formato concreto.
+
+Cuando se importa un modelo a través de *Assimp*, se carga el modelo completo dentro de un objeto escena, que contiene todos los datos importados. Entonces se tiene una colección de nodos, donde cada uno de ellos contiene índices a datos almacenados en el objeto escena, donde cada nodo puede tener varios hijos.
+
+![Figure [res/017_001]: Estructura de un modelo en *Assimp*](res/017_001.png)
+
+Todos los datos de la escena/modelo están en el objeto `Scene`, tal como los materiales y las mallas. También contiene una referencia al nodo raíz de la escena. El nodo raíz de la escena puede contener a otros nodos hijo, y puede tener un conjunto de índices que apuntan a datos de malla en el array de objetos `mMeshes`. Un objeto `Mesh` contiene toda la información relevante para ser dibujado, posiciones de vértices, vectores normales, coordenadas de textura, caras y materiales del objeto. Una malla contiene muchas caras, una cara (`Face`) representa una primitiva de render del objeto (triángulos, cuadrados, puntos). Una cara contiene los índices de los vértices que forman una primitiva. Puesto que los vértices y los índices están separados, es sencillo pintar a través de un buffer indexado. Finalmente, una malla también contiene un objeto `Material`, que tiene varias funciones para obtener las propiedades del material del objeto, colores, mapas de textura (difusa, specular).
+
+Lo primero que hay que hacer es cargar un objeto en una `Scene`, y de manera recursiva obtener los objetos `Mesh` correspondientes desde cada uno de los nodos y procesar cada objeto `Mesh` para obtener sus datos de vértices, índices y propiedades de los materiales. El resultado es una colección de datos de mallas que hay que alojar en un solo objeto `Model`.
+
+Por norma general los artistas no crean un modelo completo a partir de una sola forma. Usualmente cada modelo tiene varios submodelos o formas. Cada uno de esos submodelos que componen un modelo se llaman mallas (`meshes`). Si fuera un personaje humano, los artistas suelen modelarlo con cabeza, brazos, piernas, tronco, ropa, armas, todos como componentes separados, y el combinado de todas esas mallas representa el modelo final. Una sola malla es la representación mínima de lo que se necesita para pintar un objeto en *OpenGL* (datos de vértice, índices y materiales). Por tanto, un modelo suele consistir de varias mallas.
+
+## Build Assimp
+
+[*Assimp*](https://www.assimp.org/) es un proyecto basado en *CMake*, se bajan/clonan los fuentes de *Assimp* desde el proyecto de [`github`](https://github.com/assimp/assimp) y hay que construirlos como librería externa a nuestro proyecto, estática o dinámicamente.
+
+![Figure [res/017_002]: Estructura de carpetas de los fuentes de *Assimp*](res/017_002.png)
+
+Se abre `CMake`, para tener un interfaz visual, en la parte superior se le indica la carpeta donde están los fuentes de *Assimp*, y se crea una carpeta `build`, donde se va a construir la librería.
+
+![Figure [res/017_003]: `CMake` de *Assimp*](res/017_003.png)
+
+Se pulsa el botón `Configure` y se le índica para que herramienta se va a preparar todo. En este caso para `Visual Studio 2022` en `x64`.
+
+![Figure [res/017_004]: Elección de `VS2022` como compilador](res/017_004.png)
+
+Si todo ha ido bien aparecerán en la ventana principal de `CMake` en rojo todas las opciones posibles para la compilación de *Assimp*. En este punto la más importante es asegurarse de que `BUILD_SHARED_LIBS` está marcada, puesto que vamos a compilar *Assimp* como librería dinámica para usarla de esta manera desde nuestro proyecto. Además se quita el sufijo de `Debug`, en `CMAKE_DEBUG_POSTFIX`.
+
+![Figure [res/017_005]: `BUILD_SHARED_LIBS` marcado](res/017_005.png)
+
+Se pulsa `Generate` para que construya todo y luego `Open Project` para abrir el proyecto de `Visual Studio` ya correctamente configurado.
+
+![Figure [res/017_006]: *Assimp* listo para ser compilado en *VS2022*](res/017_006.png)
+
+En `Visual Studio` se pincha con el botón derecho sobre el proyecto `assimp` y se selecciona `Build`. Es interesante hacerlo para las dos configuraciones, primero para `Debug` y luego para `Release`. Una vez compilado dentro de la ruta que se haya especificado en `build` para `CMake` en el primer paso, aparecerán varias carpetas, por un lado en `bin` está la librería compilada en las dos configuraciones `Release` y `Debug`, en `lib` está la librería de importación también en las dos configuraciones.
+
+El primer paso es copiar el contenido de ambas carpetas a la carpeta `libs` de nuestro proyecto del motor. Dentro de la carpeta `libs`, se dejan dos carpetas `Debug` y `Release` para cada configuración, y se copian dentro los ficheros `.dll` y `.lib` correspondientes compilados anteriormente.
+
+![Figure [res/017_007]: Carpeta `libs`, con los ficheros `.lib` y `.dll` compilados en `Debug` y `Release`](res/017_007.png)
+
+El segundo es copiar las cabeceras de *Assimp* en nuestro proyecto. Por un lado, hay que copiar la carpeta `include/assimp` que está en la raíz de las fuentes de *Assimp*, y por otro la carpeta `include/assimp` que está debajo de la carpeta `build` que acabamos de compilar. También hay que copiar la carpeta `contrib` de la carpeta de `assimp` en el `include` del motor. Hay que copiarlas dentro la carpeta `include` de nuestro proyecto.
+
+![Figure [res/017_008]: Carpeta con las cabeceras de *Assimp* (incluye `config.h` de la carpeta `build`)](res/017_008.png)
+
+Ahora solo queda configurar nuestro proyecto para que use la librería *Assimp*. En el fichero `CMakeLists.txt` del proyecto se enlaza la librería del motor contra la librería *Assimp*, con el nombre correcto que haya resultado de la compilación de la libreria, `.lib`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cmake linenumbers
+target_link_libraries(EngineLib PRIVATE
+    debug ${CMAKE_CURRENT_LIST_DIR}/libs/Debug/assimp-vc143-mt.lib)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [link_assimp]: Enlazar con la librería *Assimp*]
+
+Y asegurarse que la librería dinámica se copia junto al ejecutable tras cada compilación.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cmake linenumbers
+#Copy .dll after build
+add_custom_command(TARGET EngineLib POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${CMAKE_CURRENT_LIST_DIR}/libs/$<CONFIGURATION>/assimp-vc143-mt.dll"
+    $<TARGET_FILE_DIR:EngineLib>)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [copy_assimp]: Copiar las `.dll` librerías dinámicas junto al ejecutable]
+
+Para finalizar hay que volver a generar la solución desde nuestro `CMake` para que estos cambios se incluyan en el proyecto.
+
+# Mesh
+
+Usando *Assimp* se pueden cargar muchos modelos diferentes, pero una vez cargados se almacenan en las estructuras propias de *Assimp*, lo que se necesita es transformar esos datos en un formato que *OpenGL* pueda entender para poder pintar los objetos. Una malla representa una entidad que se puede pintar, así que se empieza definiendo una clase `Malla`/`Mesh`.
+
+Una malla debe tener al menos lo siguiente, un conjunto de vértices donde cada vértice contiene un vector posición, un vector normal y un vector de coordenada de textura. Una malla también debería contener los índices para el pintado indexado y datos de material en la forma de texturas para mapas difuso y specular.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+struct Vertex {
+  glm::vec3 Position;
+  glm::vec3 Normal;
+  glm::vec2 TexCoords;
+  glm::vec3 Tangent;
+  glm::vec3 Bitangent;
+};
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [vertex_struct]: `Struct` con los datos de un vértice]
+
+Esta puede ser una estructura que defina los atributos mínimos para un vértice en *OpenGL*. Se guarda cada uno de los vértices en una estructura `Vertex`. Aparte se necesita una estructura para organizar los datos de textura en una estructura `Texture`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+struct Texture {
+  uint32_t id;
+  std::string type;
+  std::string path;
+};
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [texture_struct]: `Struct` con los datos de una textura]
+
+Se guarda su `id` de textura, así como su tipo (difusa, specular, normal,...) y la ruta a su fichero en disco. Sabiendo la representación de un vértice y una textura se puede definir una clase `Mesh`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+class Mesh {
+public:
+  Mesh(std::vector<Vertex> vertices, std::vector<uint32_t> indices, std::vector<Texture> textures);
+
+  void render(const Shader& shader) const;
+
+  std::vector<Vertex> vertices_;
+  std::vector<uint32_t> indices_;
+  std::vector<Texture> textures_;
+  uint32_t VAO_;
+private:
+  void setupMesh();
+
+  uint32_t VBO_, EBO_;
+};
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [mesh_class]: Cabecera de la clase `Mesh`]
+
+En el constructor se le da a la malla todos los datos necesarios, se inicializan los buffers en la función `setupMesh` y se pintan en la función `render`. Pasándole un shader a la función `render` se pueden ajustar algunos `uniforms` antes de pintar (como enlazar los `samplers` a las unidades de textura).
+
+El constructor es bastante sencillo, solo se ponen las variables públicas con los valores de los argumentos y se llama a `setupMesh`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+Mesh::Mesh(std::vector<Vertex> vertices, std::vector<uint32_t> indices,
+  std::vector<Texture> textures): vertices_(vertices), indices_ (indices),
+  textures_ (textures) {
+  setupMesh();
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [mesh_const]: Constructor de la clase `Mesh`]
+
+## Inicialización
+
+En el constructor llegan todos los datos de la malla necesarios para pintar. Hay que montar los buffers apropiados y especificar como se van a situar los punteros de los atributos en el shader de vértices.
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+void Mesh::setupMesh() {
+  // create buffers/arrays
+  glGenVertexArrays(1, &VAO_);
+  glGenBuffers(1, &VBO_);
+  glGenBuffers(1, &EBO_);
+
+  glBindVertexArray(VAO_);
+  glBindBuffer(GL_ARRAY_BUFFER, VBO_);
+
+  glBufferData(GL_ARRAY_BUFFER, vertices_.size() * sizeof(Vertex), &vertices_[0], GL_STATIC_DRAW);
+
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO_);
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices_.size() * sizeof(uint32_t), &indices_[0], GL_STATIC_DRAW);
+
+  // vertex Positions
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+  // vertex texture coords
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
+  // vertex normals
+  glEnableVertexAttribArray(2);
+  glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
+  // vertex tangent
+  glEnableVertexAttribArray(3);
+  glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Tangent));
+  // vertex bitangent
+  glEnableVertexAttribArray(4);
+  glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Bitangent));
+
+  glBindVertexArray(0);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [mesh_setup]: Función para inicializar un `Mesh`]
+
+Esto no es muy diferente de lo que se ha venido haciendo hasta ahora. Los `structs` de `C++` tienen la propiedad de que su disposición en memoria es secuencial, con lo cual se traducen directamente a un array de `floats` tal como se necesita, y se le puede pasar directamente a *OpenGL*. Y con la macro `offsetof` calcular donde empieza cada uno de los miembros respecto del inicio del `struct`.
+
+## Render
+
+Antes de pintar la malla hay que enlazar las texturas correctas antes de llamar a `glDrawElements`. Sin embargo, esto es difícil, puesto que inicialmente no sabemos cuántas texturas tendrá la malla ni de qué tipo serán. Para solucionar este problema se pueden asumir ciertas convenciones a la hora de llamar a los `uniforms`. Cada textura difusa se llamará `texture_diffuseN` y cada textura specular se llamará `texture_specularN`, donde `N` es un número entre 1 y el número máximo de texturas que permiten los `samplers`. Si hay 2 texturas difusas y 1 textura specular para una malla en particular, entonces sus `samplers` se llamarán así.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+uniform sampler2D texture_diffuse1;
+uniform sampler2D texture_diffuse2;
+
+uniform sampler2D texture_specular1;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [mesh_sampler]: Nombre de los `uniforms` para los `samplers` en el shader de fragmentos]
+
+El código resultante para la función de pintado.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+void Mesh::render(const Shader& shader) const {
+  // bind appropriate textures
+  uint32_t diffuseNr = 1;
+  uint32_t specularNr = 1;
+  uint32_t normalNr = 1;
+  uint32_t heightNr = 1;
+  for (uint8_t i = 0; i < textures_.size(); i++) {
+    glActiveTexture(GL_TEXTURE0 + i); // active proper texture unit before binding
+    // retrieve texture number (the N in diffuse_textureN)
+    std::string number;
+    std::string name = textures_[i].type;
+    if (name == "texture_diffuse")
+      number = std::to_string(diffuseNr++);
+    else if (name == "texture_specular")
+      number = std::to_string(specularNr++); // transfer unsigned int to stream
+    else if (name == "texture_normal")
+      number = std::to_string(normalNr++); // transfer unsigned int to stream
+    else if (name == "texture_height")
+      number = std::to_string(heightNr++); // transfer unsigned int to stream
+
+                       // now set the sampler to the correct texture unit
+    shader.set((name + number).c_str(), i);
+    // and finally bind the texture
+    glBindTexture(GL_TEXTURE_2D, textures_[i].id);
+  }
+
+  // draw mesh
+  glBindVertexArray(VAO_);
+  glDrawElements(GL_TRIANGLES, indices_.size(), GL_UNSIGNED_INT, 0);
+  glBindVertexArray(0);
+
+  // always good practice to set everything back to defaults once configured.
+  glActiveTexture(GL_TEXTURE0);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [mesh_render]: Función para pintar un `Mesh`]
+
+Primero se calcula el `N` componente para cada tipo de textura y se concatena con la cadena del tipo de textura para formar el nombre correcto del `uniform`. Se localiza el `sampler` apropiado, se le da el valor apropiado a la localización de la unidad de textura activa y se enlaza la textura. Y por último se pintan los elementos.
+
+# Model
+
+Ahora hay que empezar a meterse de lleno con *Assimp* y crear el código para cargar y traducir los modelos. Un modelo puede contener varias mallas (`meshes`), posiblemente con múltiples objetos. Se carga el modelo a través de *Assimp* y se traslada a varios objetos `Mesh` como los creados previamente.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+class Model {
+public:
+  std::vector<Texture> textures_loaded_;
+  std::vector<Mesh> meshes_;
+  std::string directory_;
+  bool gammaCorrection_;
+
+  Model(std::string const &path, bool gamma = false);
+
+  void render(const Shader& shader) const;
+private:
+  void loadModel(std::string const path);
+
+  void processNode(aiNode *node, const aiScene *scene);
+  Mesh processMesh(aiMesh *mesh, const aiScene *scene);
+
+  std::vector<Texture> loadMaterialTextures(aiMaterial *mat, aiTextureType type,
+    std::string typeName);
+};
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [model_class]: Cabecera de la clase `Model`]
+
+Esta clase contiene un vector de objetos `Mesh`, y requiere la ruta de un fichero en el constructor. Entonces carga el fichero a través de la función `loadModel`. Las funciones privadas están diseñadas para procesar una parte de la rutina de importación de *Assimp*. Se guarda también el `path` del fichero, que se usará para cargar las texturas.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+void Model::render(const Shader& shader) const {
+  for (uint32_t i = 0; i < meshes_.size(); i++)
+    meshes_[i].render(shader);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [model_render]: Función render de la clase `Model`]
+
+La función para pintar es muy sencilla, itera sobre cada `Mesh` y la pinta llamando a su respectiva función `render`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+Model::Model(std::string const &path, bool gamma) : gammaCorrection_(gamma) {
+  loadModel(path);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [model_constr]: Constructor de la clase `Model`]
+
+Y el constructor simplemente llama a la función `loadModel` para empezar la carga del modelo.
+
+## Importar un modelo 3D
+
+Para importar un modelo y traducirlo a nuestras propias estructuras primero hay que incluir las cabeceras correctas de *Assimp*.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#include <assimp/Importer.hpp>
+#include <assimp/postprocess.h>
+#include <assimp/scene.h>
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [model_assimp_headers]: Cabeceras de *Assimp*]
+
+La función `loadModel` se llama desde el constructor.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+void Model::loadModel(std::string const path) {
+  Assimp::Importer importer;
+  const aiScene* scene = importer.ReadFile(path.c_str(),
+    aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_CalcTangentSpace);
+  if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
+    std::cout << "ERROR::ASSIMP:: " << importer.GetErrorString() << std::endl;
+    return;
+  }
+
+  directory_ = path.substr(0, path.find_last_of('/'));
+
+  processNode(scene->mRootNode, scene);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [model_load]: Función `loadModel`]
+
+Se carga el fichero en una estructura `Scene` de *Assimp*, que es la raíz de datos. Una vez se tiene ese objeto se puede acceder a todos los datos necesarios. Se declara un objeto `Importer` de *Assimp* y se llama a la función `ReadFile`. Esta espera la ruta de un fichero y como segundo argumento unas opciones de post proceso. Aparte de cargar el modelo, *Assimp* puede realizar ciertos cálculos y operaciones en los datos importados.
+
+- `aiProcess_Triangulate`, si el modelo no consiste de triángulos se deben transformar todas sus primitivas a triángulos
+- `aiProcess_FlipUVs`, invierte las coordenadas de textura en el eje `Y`, donde sea necesario, para evitar tener que dar la vuelta a la textura
+- `aiProcess_GenNormals`, crea normales para cada vértice si el modelo no tuviera los vectores normales
+- `aiProcess_SplitLargeMeshes`, divide mallas grandes en mallas más pequeñas, es útil si al pintar hay un máximo de vértices
+- `aiProcess_OptimizeMeshes`, al contrario, une varias mallas pequeñas en una grande, reduciendo las llamadas a pintado
+- `aiProcess_CalcTangentSpace`, calcula las tangentes y bitangentes
+
+Cargar un modelo a través de *Assimp* es muy sencillo, lo complicado es usar el objeto escena retornado y traducirlo a un array de objetos `Mesh`.  Una vez cargado el modelo, se verifica que el objeto `Scene` se haya cargado correctamente y se pasan a procesar los nodos de la escena. Para eso se procesa el nodo raíz llamando a la función recursiva `processNode`. Puesto que cada nodo puede contener un conjunto de nodos hijo, se quiere procesar primero el nodo en cuestión y luego procesar a sus hijos.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+void Model::processNode(aiNode *node, const aiScene *scene) {
+  for (uint32_t i = 0; i < node->mNumMeshes; i++) {
+    aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
+    meshes_.push_back(processMesh(mesh, scene));
+  }
+
+  for (uint32_t i = 0; i < node->mNumChildren; i++) {
+    processNode(node->mChildren[i], scene);
+  }
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [model_processNode]: Función `processNode`]
+
+Primero se comprueba cada uno de los índices de las mallas del nodo y se obtiene la correspondiente malla indexando el array `mMeshes` de la escena. La malla retornada entonces se le pasa a la función `processMesh`, que devuelve un objeto `Mesh` que se puede guardar en el vector de `meshes` del modelo.
+
+Una vez se han procesado todas las mallas del nodo se itera sobre todos los hijos del nodo llamando a la misma función processNode para cada hijo. Una vez no queden más hijos que procesar la función acaba su ejecución.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+Mesh Model::processMesh(aiMesh *mesh, const aiScene *scene) {
+  std::vector<Vertex> vertices;
+  std::vector<uint32_t> indices;
+  std::vector<Texture> textures;
+
+  for (uint32_t i = 0; i < mesh->mNumVertices; i++) {  //each of mesh's vertices
+    Vertex vertex;
+    glm::vec3 vector;
+
+    vector.x = mesh->mVertices[i].x;  // positions
+    vector.y = mesh->mVertices[i].y;
+    vector.z = mesh->mVertices[i].z;
+    vertex.Position = vector;
+
+    vector.x = mesh->mNormals[i].x;  // normals
+    vector.y = mesh->mNormals[i].y;
+    vector.z = mesh->mNormals[i].z;
+    vertex.Normal = vector;
+
+    if (mesh->mTextureCoords[0]) {   // texture coordinates
+      glm::vec2 vec;
+      vec.x = mesh->mTextureCoords[0][i].x;
+      vec.y = mesh->mTextureCoords[0][i].y;
+      vertex.TexCoords = vec;
+    }
+    else
+      vertex.TexCoords = glm::vec2(0.0f, 0.0f);
+
+    vector.x = mesh->mTangents[i].x;  // tangent
+    vector.y = mesh->mTangents[i].y;
+    vector.z = mesh->mTangents[i].z;
+    vertex.Tangent = vector;
+
+    vector.x = mesh->mBitangents[i].x;  // bitangent
+    vector.y = mesh->mBitangents[i].y;
+    vector.z = mesh->mBitangents[i].z;
+    vertex.Bitangent = vector;
+    vertices.push_back(vertex);
+  }
+  for (unsigned int i = 0; i < mesh->mNumFaces; i++) {   //each of the mesh's faces
+    aiFace face = mesh->mFaces[i];
+    for (unsigned int j = 0; j < face.mNumIndices; j++)
+      indices.push_back(face.mIndices[j]);
+  }
+
+  aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];  // process materials
+  // 1. diffuse maps
+  std::vector<Texture> diffuseMaps = loadMaterialTextures(material, aiTextureType_DIFFUSE, "texture_diffuse");
+  textures.insert(textures.end(), diffuseMaps.begin(), diffuseMaps.end());
+  // 2. specular maps
+  std::vector<Texture> specularMaps = loadMaterialTextures(material, aiTextureType_SPECULAR, "texture_specular");
+  textures.insert(textures.end(), specularMaps.begin(), specularMaps.end());
+  // 3. normal maps
+  std::vector<Texture> normalMaps = loadMaterialTextures(material, aiTextureType_HEIGHT, "texture_normal");
+  textures.insert(textures.end(), normalMaps.begin(), normalMaps.end());
+  // 4. height maps
+  std::vector<Texture> heightMaps = loadMaterialTextures(material, aiTextureType_AMBIENT, "texture_height");
+  textures.insert(textures.end(), heightMaps.begin(), heightMaps.end());
+
+  return Mesh(vertices, indices, textures);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [model_processMesh]: Función `processMesh`]
+
+Primero se procesan todos los datos de vértice, luego los índices y por último los datos relevantes del material. Los datos procesados se almacenan en 3 vectores y con eso se construye un objeto `Mesh` que se devuelve.
+
+Obtener los datos de los vértices es bastante simple, se define una estructura `Vertex`, se va rellenando con los datos de la malla de *Assimp*, y en cada iteración se va añadiendo al vector de vértices.
+
+*Assimp* define para cada malla un array de `faces`, y cada una de ellas es una primitiva simple, como le hemos pedido a *Assimp* que los triangule, siempre serán triángulos. Una cara entonces contiene los índices que se necesitan para pintar un triángulo, se itera sobre todas las caras y se guardan en el vector de índices.
+
+Como los nodos, cada malla solo contiene un índice a un objeto `material` y para obtenerlo se necesita acceder al array `nMaterials` de la escena. Se obtiene el `aiMaterial` de ese array y se carga la textura requerida mediante la función `loadMaterialTextures`, y se añade al vector de texturas.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+std::vector<Texture> Model::loadMaterialTextures(aiMaterial *mat, aiTextureType type,
+  std::string typeName) {
+  std::vector<Texture> textures;
+  for (uint32_t i = 0; i < mat->GetTextureCount(type); i++) {
+    aiString str;
+    mat->GetTexture(type, i, &str);
+    // check if texture was loaded before and if so, continue to next iteration: skip loading a new texture
+    bool skip = false;
+    for (uint32_t j = 0; j < textures_loaded_.size(); j++) {
+      if (std::strcmp(textures_loaded_[j].path.data(), str.C_Str()) == 0) {
+        textures.push_back(textures_loaded_[j]);
+        skip = true; // a texture with the same filepath has already been loaded, continue to next one. (optimization)
+        break;
+      }
+    }
+    if (!skip) {   // if texture hasn't been loaded already, load it
+      Texture texture;
+      texture.id = TextureFromFile(str.C_Str(), directory_, false);
+      texture.type = typeName;
+      texture.path = str.C_Str();
+      textures.push_back(texture);
+      textures_loaded_.push_back(texture);  // store it as texture loaded for entire model, to ensure we won't unnecesery load duplicate textures.
+    }
+  }
+  return textures;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [model_loadMaterialTextures]: Función `loadMaterialTextures`]
+
+Esta función itera sobre todas las localizaciones de textura de un tipo determinado de textura, obtiene la localización del fichero y carga y genera la textura y almacena su información.
+
+Como optimización verifica si la textura ya está cargada, y en ese caso no la vuelve a cargar y reutiliza la anteriormente cargada.
+
+## Usar un modelo importado
+
+Usar nuestro importador de modelos es muy sencillo.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+const Model object(ASSETS_PATH "models/Freighter/Freigther_BI_Export.obj");
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [model_load]: Cargar un modelo]
+
+Se define un objeto Model y se le pasa la ruta del fichero `.obj` a cargar, y a la hora de pintar solo hay que llamar a su método `render`, pasándole el shader activo con el cual se quiere pintar el modelo.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+object.render(shader);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [model_render]: Pintar un modelo]
+
+![Figure [res/017_009]: Modelo importado y pintado con la textura difusa](res/017_009.png)
+
+![Figure [res/017_010]: Modelo importado y pintado en WireFrame](res/017_010.png)
+
+El modelo de prueba es un `WaveFront .obj`, con un fichero `.mtl` que contiene los mapas difusos, speculares y normales del modelo. Se han cambiado las rutas para que apunten a las texturas correctas en la misma carpeta que el fichero `.obj`. Se puede descargar [aquí](https://free3d.com/3d-model/si-fi-freighter-13915.html).
+
+# Ejercicios
+
+- Importar un modelo 3D complejo a elección (de algún repositorio de modelos 3D gratis). El modelo tiene que tener lo necesario para pintarlo correctamente. Para pintar hay que usar el modelo de iluminación `Blinn`, mapas difusos y speculares, y usar al menos una luz direccional, y una point light.
+
+<link rel="stylesheet" href="res/md/viu.css">
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'long'};</script>
+<!-- Markdeep: --><script src="res/md/markdeep.min.js?" charset="utf-8"></script>

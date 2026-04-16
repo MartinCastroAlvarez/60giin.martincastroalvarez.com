@@ -1,0 +1,375 @@
+<meta charset="utf-8">
+**60GIIN - 026 - Deferred Shading**
+    <small>©2026 VIU - 60GIIN Programación Gráfica - Iván Fuertes</small>
+
+# Introducción
+
+El modelo de pintado usado hasta ahora ha sido el llamado `forward rendering/shading`, una aproximación directa donde se pinta un objeto y se ilumina de acuerdo a todas las luces en la escena. Se hace esto para cada objeto en la escena de manera individual. Es sencillo de entender e implementar, pero es poco eficiente, puesto que cada objeto que se pinta tiene que iterar sobre cada fuente de luz para cada fragmento que acaba pintándose, lo cual suele ser mucho. Este sistema también tiende a desperdiciar muchas ejecuciones del shader de fragmentos en escenas con mucha complejidad, (donde varios objetos cubren el mismo pixel en pantalla) puesto que muchas salidas de este shader se sobreescriben varias veces.
+
+La técnica del `deferred rendering/shading` intenta superar estos problemas cambiando de manera drástica como se pintan los objetos. De esta manera se abren nuevas opciones para optimizar de manera significativa las escenas con un gran número de luces, pudiendo pintar cientos o miles de luces con un framerate aceptable.
+
+![Figure [res/026_001]: Escena con cientos de luces usando `deferred`](res/026_001.png)
+
+En `forward rendering/shading` se le envían la geometría a la GPU, se proyectan y se trocean en vértices y triángulos, que se transforman en fragmentos o píxels, que reciben el tratamiento final de iluminación antes de pasar a la pantalla.
+
+![Figure [res/026_002]: `Forward pipeline`](res/026_002.png)
+
+En cambio el `deferred` se basa en la idea de diferir o posponer la mayor parte del pintado (como la iluminación) a una etapa posterior. Consiste de dos pasadas, en la primera pasada, llamada, la pasada de geometría, se pinta la escena una vez, y se obtienen todas las tipos de información geométrica de los objetos.
+
+![Figure [res/026_003]: `Deferred pipeline`](res/026_003.png)
+
+Esta información geométrica se almacena en una colección de texturas llamada `G Buffer`, por ejemplo, vectores de posición, colores, normales, valores speculares,... Esta información del `G Buffer` se usa más tarde para los cálculos de la iluminación más complejos.
+
+![Figure [res/026_004]: `G Buffer`](res/026_004.png)
+
+Estas texturas en el `G Buffer` se usan en la segunda pasada, la pasada de iluminación, donde se pinta un quad que ocupa toda la pantalla, y se calcula la iluminación de la escena para cada fragmento usando esa información geométrica almacenada en el `G Buffer`. Pixel a pixel, se itera sobre el `G Buffer`. En lugar de coger cada objeto y hacerlo pasar por todo el camino desde el shader de vértices hasta el de fragmentos, se desacopla el procesamiento de los fragmentos a una etapa posterior. Los cálculos de iluminación son exactamente los mismos, pero esta vez se toman todas las variables de entrada de las texturas correspondientes en el `G Buffer`, en lugar del shader de vértices (junto con algunos `uniforms`).
+
+![Figure [res/026_005]: `Deferred pipeline`](res/026_005.png)
+
+La mayor ventaja de este sistema es que cualquier fragmento que acabe en el `G Buffer` es la información real del fragmento que va a acabar pintado en un pixel en pantalla. El test de profundidad en la primera pasada ya ha determinado que este fragmento es el último y el que está encima del resto. Esto asegura que para cada pixel que se procesa en la pasada de iluminación, solo se calcula la iluminación una vez. Además, el `deferred` abre la puerta a la posibilidad de más optimizaciones que permiten pintar un número mayor de fuentes de luz que el `forward`.
+
+Pero también tiene algunas desventajas, el `G Buffer` necesita almacenar una relativamente gran cantidad de datos de la escena en buffers de color de texturas. Esto consume memoria, especialmente datos como los vectores de posición, que necesitan de una alta precisión. Otra desventaja, es que no soporta el `blending` (puesto que solo se tiene información del fragmento superior) y por ejemplo, técnicas como `MSAA` (Multi Sampling Anti Aliasing) no funcionan.
+
+Rellenar el `G Buffer` en la pasada de geometría no es muy costoso, puesto que se almacena directamente información como la posición, color, o normales en un framebuffer con apenas necesidad de procesamiento. Usando `MRT` (Multiple Render Targets) se puede hacer todo esto en una sola pasada de pintado.
+
+# G-Buffer
+
+Este buffer es un colectivo de todas las texturas que se usan para almacenar todo los datos relevantes a la iluminación que se usarán luego en la pasada final de iluminación. Para iluminar un fragmento en `forward rendering` se necesita:
+
+- Una posición 3D en espacio de mundo, para calcular la posición (interpolada) del fragmento usado para `lightDir` y `viewDir`
+- Un color difuso `RGB` también llamado albedo
+- Un vector 3D normal para determinar la inclinación de la superficie
+- Un float con la intensidad specular
+- Todas las posiciones y colores de las fuentes de luz
+- El vector posición del espectador
+
+Con todas esas variables por fragmento a nuestra disposición se puede calcular el modelo de iluminación `Blinn-Phong` tal como se hacía de manera habitual hasta ahora. Las posiciones y colores de las fuentes de luz, y la posición del espectador pueden ser configuradas usando `uniforms`, pero las otras variables son específicas de los fragmentos. Se de alguna manera se pudieran pasar esos mismos datos exactos a la pasada diferida de iluminación se pueden calcular los mismos efectos de iluminación, pero ahora se están pintando fragmentos de un quad 2D.
+
+No hay ningún limite en *OpenGL* a lo que se puede almacenar en una textura, así que tiene sentido almacenar todos los datos por fragmento en una o varias texturas (completamente llenas) del `G Buffer` y usarlas posteriormente en la segunda pasada. Y puesto que las texturas en el `G Buffer` tendrán en el mismo tamaño que el quad 2D en la segunda pasada, se obtienen los mismos datos de fragmentos que se tendrían en un `forward`, pero esta vez en la pasada de iluminación, es un mapeado uno a uno.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+while(...) // render loop
+{
+    // 1. geometry pass: render all geometric/color data to g-buffer
+    glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
+    glClearColor(0.0, 0.0, 0.0, 1.0); // keep it black so it doesn't leak into g-buffer
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    gBufferShader.use();
+    for(Object obj : Objects)
+    {
+        ConfigureShaderTransformsAndUniforms();
+        obj.Draw();
+    }
+
+    // 2. lighting pass: use g-buffer to calculate the scene's lighting
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    lightingPassShader.use();
+    BindAllGBufferTextures();
+    SetLightingUniforms();
+    RenderQuad();
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [deferred]: Proceso de `deferred` en pseudocódigo]
+
+Los datos que se van a necesitar almacenar para cada fragmento son:
+
+- Vector posición
+- Vector normal
+- Vector color
+- Valor de intensidad specular
+
+En la pasada de geometría hay que pintar todos los objetos de la escena y almacenar todos esos componentes en el `G Buffer`. Se pueden usar `MRT`, Multiple Render Targets para pintar a varios buffers de color en una sola pasada de pintado.
+
+Para esta pasada de geometría hay que inicializar un objeto `framebuffer` que se llamará `gBuffer` que tiene varios buffers de color adjuntos y un solo objeto renderbuffer de profundidad. Par las texturas de posición y normales es mejor usar una textura de alta precisión (floats de 16 o 32 bits por componente). Para los valores de albedo y specular será suficiente con la precisión de la textura por defecto de 8 bits. Se usa el formato `GL_RGBA16F` en lugar de `GL_RGB16F`, puesto que las GPU suelen preferir formatos de 4 componentes en lugar de 3, por motivos de alineamiento, incluso algunos drivers antiguos pueden fallar al completar el framebuffer por esto.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+std::tuple<uint32_t, uint32_t, uint32_t, uint32_t> createGBuffer() {
+  uint32_t gBuffer;
+  glGenFramebuffers(1, &gBuffer);
+  glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
+
+  uint32_t gPosition, gNormal, gAlbedoSpec;
+  // position color buffer
+  glGenTextures(1, &gPosition);
+  glBindTexture(GL_TEXTURE_2D, gPosition);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, static_cast<float>(Window::instance()->getWidth()), static_cast<float>(Window::instance()->getHeight()), 0, GL_RGBA, GL_FLOAT, NULL);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gPosition, 0);
+  // normal color buffer
+  glGenTextures(1, &gNormal);
+  glBindTexture(GL_TEXTURE_2D, gNormal);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, static_cast<float>(Window::instance()->getWidth()), static_cast<float>(Window::instance()->getHeight()), 0, GL_RGBA, GL_FLOAT, NULL);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, gNormal, 0);
+  // color + specular color buffer
+  glGenTextures(1, &gAlbedoSpec);
+  glBindTexture(GL_TEXTURE_2D, gAlbedoSpec);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, static_cast<float>(Window::instance()->getWidth()), static_cast<float>(Window::instance()->getHeight()), 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, gAlbedoSpec, 0);
+
+  // tell OpenGL which color attachments we'll use (of this framebuffer) for rendering
+  uint32_t attachments[3] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 };
+  glDrawBuffers(3, attachments);
+
+  // create and attach depth buffer (renderbuffer)
+  uint32_t rboDepth;
+  glGenRenderbuffers(1, &rboDepth);
+  glBindRenderbuffer(GL_RENDERBUFFER, rboDepth);
+  glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, static_cast<float>(Window::instance()->getWidth()), static_cast<float>(Window::instance()->getHeight()));
+  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);
+
+  // finally check if framebuffer is complete
+  if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+    std::cout << "Framebuffer not complete!" << std::endl;
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+  return std::make_tuple(gBuffer, gPosition, gNormal, gAlbedoSpec);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [gbuffer]: Crear el `G Buffer` con los tres buffers de color y el buffer de profundidad]
+
+Puesto que se usan targets de pintado multiples, hay que decirle a *OpenGL* de manera explicita a cual de los buffers de color asociados al `G Buffer` se va a pintar con `glDrawBuffers`. Se combinan los datos del color y la intensidad specular en una sola textura `RGBA`, esto evita usar un buffer de color adicional. Tal como el pipeline `deferred` se va haciendo más complejo y necesita más datos, se necesitan encontrar maneras de combinar datos en texturas individuales.
+
+Ahora hay que pintar en el `G Buffer`, asumiendo que cada objeto tiene una textura difusa, normal y specular, se puede usar un shader de fragmentos como el siguiente.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+#version 330 core
+layout (location = 0) out vec3 gPosition;
+layout (location = 1) out vec3 gNormal;
+layout (location = 2) out vec4 gAlbedoSpec;
+
+in vec3 fragPos;
+in vec2 uv;
+in vec3 normal;
+
+uniform sampler2D texture_diffuse1;
+uniform sampler2D texture_specular1;
+
+void main() {
+    // store the fragment position vector in the first gbuffer texture
+    gPosition = fragPos;
+    // also store the per-fragment normals into the gbuffer
+    gNormal = normalize(normal);
+    // and the diffuse per-fragment color
+    gAlbedoSpec.rgb = texture(texture_diffuse1, uv).rgb;
+    // store specular intensity in gAlbedoSpec's alpha component
+    gAlbedoSpec.a = texture(texture_specular1, uv).r;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [shader_frag_gbuffer]: Shader de fragmentos para el `G Buffer`]
+
+Hay que especificar a que buffer de color se escribe cada uno de los `out`, puesto que se están usando targets de pintado multiples. El valor de intensidad specular se guarda como un float en el componente alpha del buffer de color de la textura de albedo. Es importante mantener todas las variables relevantes en el mismo espacio de coordenadas, en este caso se calculan y almacenan todas en espacio de mundo.
+
+Al pintar una escena con multiples objetos en el framebuffer `G Buffer`, si se visualizan posteriormente estos buffers de color en un quad a pantalla completa se puede ver algo como esto:
+
+![Figure [res/026_004]: `G Buffer` de la escena](res/026_004.png)
+
+Se puede apreciar como las posiciones en espacio de mundo y las normales son correctas. Por ejemplo, los vectores normales apuntando a la derecha estarán más alineados hacia el color rojo, de manera similar a los vectores de posición que están a la derecha del origen de la escena.
+
+# Iluminación diferida
+
+Con la colección de datos en el `G Buffer` ahora se puede completar la segunda pasada de iluminación para calcular los colores de la escena final. Se itera sobre cada una de las texturas del `G Buffer` pixel a pixel, y se usa su contenido como entrada a los algoritmos de iluminación. Puesto que los valores de las texturas del `G Buffer` representan los valores de los fragmentos transformados solo hay que realizar las complejas y costosas operaciones de iluminación una sola vez por pixel. Esto es especialmente util en escenas complejas donde usando `forward rendering` se invocaría el shader de fragmentos varias veces por cada pixel.
+
+Para esta pasada de iluminación se va a pintar en un quad 2D que ocupa la pantalla completa (como si fuera un efecto de post proceso) y se ejecutan las operaciones de iluminación en el shader de fragmentos para cada pixel.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+  glDisable(GL_DEPTH_TEST);
+  glClear(GL_COLOR_BUFFER_BIT);
+
+  s_lighting.use();
+
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, std::get<1>(gBuffer));  //gPosition texture in gbuffer
+  glActiveTexture(GL_TEXTURE1);
+  glBindTexture(GL_TEXTURE_2D, std::get<2>(gBuffer));  //gNormal texture in gbuffer
+  glActiveTexture(GL_TEXTURE2);
+  glBindTexture(GL_TEXTURE_2D, std::get<3>(gBuffer));  //gAlbedoSpec texture in gbuffer
+  s_lighting.set("gPosition", 0);
+  s_lighting.set("gNormal", 1);
+  s_lighting.set("gAlbedoSpec", 2);
+
+  s_lighting.set("lightPosition", lightPositions);
+  s_lighting.set("lightColor", lightColor);
+
+  s_lighting.set("viewpos", camera.getPosition());
+
+  quad.render();
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [2nd_pass]: Segunda pasada pintando sobre un Quad 2D]
+
+Se enlazan todas las texturas relevantes del `G Buffer` antes de pintar, y se manda también la información relevante para la iluminación.
+
+El shader de fragmentos es muy similar al visto anteriormente. Lo único que cambia es el método de obtener las variables de entrada para los cálculos de la iluminación, que se samplean directamente del `G Buffer`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+uniform sampler2D gPosition;
+uniform sampler2D gNormal;
+uniform sampler2D gAlbedoSpec;
+
+vec3 FragPos = texture(gPosition, uv).rgb;
+vec3 Normal = texture(gNormal, uv).rgb;
+vec3 Diffuse = texture(gAlbedoSpec, uv).rgb;
+float Specular = texture(gAlbedoSpec, uv).a;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [shader_frag]: Obtener los datos sampleando de las texturas del `G Buffer`]
+
+Este shader recibe tres texturas como `uniforms` que representan al `G Buffer` y contienen todos los datos que se han guardado en la primera pasada de geometría. Al samplear estas texturas con las coordenadas de textura del fragmento actual (del quad 2D) se obtienen exactamente los mismos valores de fragmento que si se estuviera pintando directamente la geometría. Se obtienen el color difuso y la intensidad specular de la misma textura `gAlbedoSpec` en distintos canales.
+
+Puesto que ahora ya se tienen todas las variables por fragmento y las variables `uniforms` relevantes para calcular el modelo de iluminación `Blinn-Phong`, no hay que hacer ningún cambio al código de iluminación. Lo único que cambia es el método de obtener las variables de entrada.
+
+![Figure [res/026_006]: Escena pintada con 32 luces](res/026_006.png)
+
+Una de las desventajas de esta técnica es que no es posible realizar `blending`, puesto que todos los valores en el `G Buffer` son de fragmentos únicos, y el `blending` funciona sobre la combinación de varios fragmentos superpuestos. Otra desventaja, es que se fuerza a usar el mismo algoritmo de iluminación para la mayor parte de la iluminación de la escena, pero se puede mejorar este aspecto incluyendo más datos específicos de material en el `G Buffer`.
+
+# Combinando Deferred y Forward
+
+Para solucionar estos problemas (especialmente el `blending`) a menudo se divide el sistema de pintado en dos partes, una parte usando `deferred` y otra usando `forward` específica para el `blending` u otros efectos especiales no adecuados para el pipeline de `deferred`.
+
+En la escena anterior, se quiere pintar cada uno de los puntos de luz como esferas 3D en la posición donde se emite el color de la luz. La primera idea es simplemente pintar en `forward` todas las fuentes de luz encima del quad con la iluminación `deferred` ya pintada, al final del pipeline. Pintar las esferas como se haría normalmente, pero después de haber acabado con las operaciones de pintado del `deferred`.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+  s_light.use();
+  s_light.set("proj", proj);
+  s_light.set("view", view);
+
+  for (unsigned int i = 0; i < lightPositions.size(); i++) {
+    model = glm::mat4(1.0f);
+    model = glm::translate(model, lightPositions[i]);
+    model = glm::scale(model, glm::vec3(0.5f));
+    s_light.set("model", model);
+    s_light.set("lightColor", lightColors[i]);
+    object.render();
+  }
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [render_lights]: Pintar los puntos de luz]
+
+Sin embargo, estas esferas pintadas ahora no tienen en cuenta la profundidad de la geometría del `deferred`, se están pintando en la escena del quad 2D, y por tanto se pintarán delante o detrás del quad, pero no es lo deseado.
+
+Lo que se necesita hacer es copiar la información de profundidad almacenada en la primera pasada de geometría en el framebuffer de profundidad por defecto y entonces pintar estas esferas. De esta manera solo se pintarán los fragmentos de las esferas que pasen el test de profundidad con la geometría de la escena original.
+
+Se puede copiar el contenido de un framebuffer a otro con la función `glBlitFramebuffer`. Esta función permite copiar una región arbitraria de un framebuffer a otro.
+
+Se almacenó la profundidad de todos los objetos pintados en la primera pasada de geometría en el `FBO` `gBuffer`. Hay que especificar un framebuffer como de lectura y el otro de escritura, antes de hacer la operación de copia.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+  glBindFramebuffer(GL_READ_FRAMEBUFFER, std::get<0>(gBuffer));
+  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0); // write to default framebuffer
+  glBlitFramebuffer(0, 0, static_cast<float>(Window::instance()->getWidth()), static_cast<float>(Window::instance()->getHeight()), 0, 0, static_cast<float>(Window::instance()->getWidth()), static_cast<float>(Window::instance()->getHeight()), GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [copy_depth]: Copiar el buffer de profundidad desde el `G Buffer` al `FBO` por defecto de la pantalla]
+
+Se copiar todo el contenido del buffer de profundidad del `G Buffer` al buffer de profundidad por defecto de la pantalla, esto se puede hacer también para los buffers de color y de stencil si fuera necesario. Si ahora se pintan las esferas con los puntos de luz, lo hacen correctamente sobre la geometría existente en la escena.
+
+![Figure [res/026_007]: Escena pintada con 32 luces mezclando `deferred` y `forward`](res/026_007.png)
+
+De esta manera se puede seguir aplicando `blending` o pintar otros objetos que necesiten algún efecto especial que no sea posible en un contexto de pintado diferido puro.
+
+# Muchas luces
+
+Una de las grandes ventajas de la técnica del `deferred rendering` es su capacidad de pintar con una cantidad enorme de fuentes de luz sin un coste excesivo de rendimiento. Por si mismo, no permite una cantidad muy alta, puesto que aún hay que calcular el componente de iluminación para cada fragmento para cada fuente de luz de la escena, aunque sin duda mejora en mucho el `forward rendering`. Pero lo que hace posible pintar con una cantidad superior de luces es una optimización que se puede aplicar sobre el pipeline de `deferred`, son los volúmenes de luz.
+
+Normalmente cuando se pinta un fragmento en una escena grande iluminada, hay que calcular la contribución de cada fuente de luz presente en la escena, independientemente de su distancia al fragmento. Un gran número de fuentes de luz es probable que nunca alcancen al fragmento, y por tanto, se desperdicia ese tiempo de procesamiento.
+
+La idea detrás de los volúmenes de luz es calcular el radio, o volumen, de una fuente de luz, es decir, el area donde la luz es capaz de alcanzar a los fragmentos. Puesto que la mayoría de las fuentes de luz usan alguna forma de atenuación, se puede usar esto para calcular la máxima distancia o radio que esa luz es capaz de alcanzar. Entonces solo se realizan los costosos cálculos de iluminación si un fragmento está dentro de uno o más de esos volúmenes de luz. Esto puede ahorrar una cantidad importante de procesamiento puesto que ahora se calcula la iluminación solo donde es necesario.
+
+## Calcular el volumen/radio de una luz
+
+Para obtener el radio del volumen de una luz hay que resolver la ecuación de la atenuación cuando su contribución es igual a `0.0`. Se usa la ecuación ya conocida.
+
+\begin{equation}
+F_{att} = \frac{1.0}{K_c + K_l \cdot d + K_q \cdot d^2}
+\end{equation}
+
+Se necesita resolver esta ecuación cuando $F_{att}$ es `0.0`. Sin embargo, esta ecuación nunca alcanzará exactamente `0.0`, así que no hay una solución. En cambio, se puede resolver la ecuación para un valor de brillo cercano a `0.0` que se pueda percibir como suficientemente oscuro. Este valor de brillo puede ser $\frac{5}{256}$, se divide por `256` puesto que el framebuffer por defecto solo puede mostrar 8 bits de intensidad para cada componente.
+
+La función de atenuación es mayormente oscura en su rango visible. Si no hubiera un límite a un valor más oscuro que $\frac{5}{256}$, el volumen de luz sería demasiado grande y por tanto, menos efectivo. Mientras el usuario no vea un corte muy repentino en una luz en los bordes de su volumen no hay problema. Por supuesto, esto depende del tipo de escena, un umbral de brillo más alto produce volúmenes de luz más pequeños, y por tanto, más eficientes, pero puede producir artefactos donde la luz parece romperse an el borde del volumen.
+
+Por tanto, la ecuación de atenuación que hay que resolver se queda en :
+
+\begin{equation}
+\frac{5}{256} = \frac{I_{max}}{Attenuation}
+\end{equation}
+
+Donde $I_{max}$ es el componente de color de la fuente de luz con más brillo. Se usa este componente con más brillo para resolver la ecuación puesto que éste refleja mejor el radio ideal.
+
+\begin{equation}
+\frac{5}{256} \cdot Attenuation = I_{max}
+\end{equation}
+
+\begin{equation}
+Attenuation = I_{max} \cdot \frac{256}{5}
+\end{equation}
+
+\begin{equation}
+K_c + K_l \cdot d + K_q \cdot d^2 = I_{max} \cdot \frac{256}{5}
+\end{equation}
+
+\begin{equation}
+K_q \cdot d^2 + K_l \cdot d + K_c - I_{max} \cdot \frac{256}{5} = 0
+\end{equation}
+
+Esta última es una ecuación de segundo grado en la forma $a \cdot x^2 + b \cdot x + c = 0$, que se puede resolver usando la ecuación cuadrática.
+
+\begin{equation}
+x = \frac{-K + \sqrt{K_l^2 - 4 \cdot K_q \cdot (K_c - I_{max} \cdot \frac{256}{5})}}{2 \cdot K_q}
+\end{equation}
+
+Esto resulta en una ecuación general que permite calcular el valor de `x`, el radio del volumen de una luz dados unos parámetros constantes, lineales y cuadráticos.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+const float constant = 1.0f;
+const float linear = 0.7f;
+const float quadratic = 1.8f;
+const float maxBrightness = std::fmaxf(std::fmaxf(lightColor.r, lightColor.g), lightColor.b);
+float radius = (-linear + std::sqrt(linear * linear - 4 * quadratic * (constant - (256.0f / 5.0f) * maxBrightness))) / (2.0f * quadratic);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [radius]: Calcular el radio de un volumen de luz]
+
+Se calcula este radio para cada fuente de luz de la escena, y se usa solo para calcular la iluminación para esa luz si el fragmento está dentro de ese volumen.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ cpp linenumbers
+for(int i = 0; i < NR_LIGHTS; ++i) {
+    float distance = length(lights[i].Position - FragPos);
+    if (distance < lights[i].Radius) {
+        // calculate lighting as usual
+        //...
+    }
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[Listing [volume_fragment]: Verificar si el fragmento está dentro del volumen de la luz]
+
+En el shader de fragmentos se calcula la distancia del fragmento a la posición de la luz, y se verifica si está dentro del volumen, en caso positivo se calcula su aportación a la iluminación del fragmento de la manera habitual.
+
+## Usar volúmenes de luz
+
+El código anterior en una aplicación de producción no sería buena idea, muestra como se pueden usar los volúmenes de luz para reducir el procesamiento de la iluminación, pero no es eficiente. El motivo es porque tanto la GPU como *GLSL* son bastante malos optimizando bucles y condicionales, la ejecución de los shaders en la GPU está muy paralelizada y la mayoría de arquitecturas tienen el requisito que para una colección grande de hilos, estos necesitan ejecutar exactamente el mismo código para ser eficientes. Esto suele significar que un shader cuando se ejecuta, lo hace en todas las ramas de los condicionales, para asegurarse de que las ejecuciones del shader son exactamente las mismas para cada grupo de hilos, haciendo que esta optimización de la verificación del radio completamente inútil. Aún se calcula la iluminación para todas las fuentes de luz.
+
+La forma correcta de usar volúmenes de luz es pintar esferas reales, escaladas por el radio del volumen de luz. Los centros de esas esferas se encuentran en la posición del punto de luz, y se escalan por el radio del volumen, así la esfera abarca exactamente el volumen visible de luz. El truco entonces es, se usa el shader de iluminación diferida `deferred` para pintar las esferas. Puesto que una esfera produce las invocaciones al shader de fragmentos que se ajustan exactamente a los pixels donde la fuente de luz afecta, se pintarán solo los pixels relevantes a ese volumen de luz, y se saltan el resto de los pixels.
+
+Esto se hace para cada fuente de luz en la escena, y los fragmentos resultantes se mezclan juntos de manera aditiva. El resultado es entonces, la misma escena anterior, pero esta vez pintando solo los fragmentos relevantes por fuente de luz. Esto reduce la complejidad computacional de `n_objects * n_lights` a `n_objects + n_lights`. Lo que lo hace muy eficiente en escenas con un gran número de luces. Y esta solución es la que hace al `deferred rendering` tan bueno pintando muchas luces.
+
+Aún hay un problema con este método, el face culling debe estar activado (si no se pintaría el efecto de la luz dos veces). Pero cuando está habilitado y la cámara entra en uno de esos volúmenes de luz, ese volumen de luz ya no se pinta más (debido al culling de la parte posterior de las esferas), eliminando la aportación de ese punto de luz. Pero se puede solucionar esto pintando solo las caras traseras de las esferas.
+
+Pintar con volúmenes de luz, sin embargo, tiene su coste, y aunque suele ser mucho más rápido que el clásico pipeline `deferred` al pintar muchas luces, aún se pueden realizar muchas optimizaciones. Otras dos técnicas populares y más eficientes desarrolladas sobre el `deferred` son `deferred lighting` y `tile-based deferred shading`. Estas son mucho más eficientes al pintar muchas luces e incluso permiten un `MSAA` eficiente.
+
+# Deferred vs Forward
+
+Por si mismo, sin los volúmenes de luz, el `deferred` es una buena optimización puesto que cada pixel solo se ejecuta una vez en el shader de fragmentos, comparado con el `forward`, donde a menudo se ejecuta el shader de fragmentos varias veces por pixel. Tiene sus desventajas, como un mayor uso de memoria, no es posible el `MSAA`, y el `blending` hay que seguir haciéndolo mediante `forward`.
+
+Cuando se tiene una escena pequeña y pocas luces, el `deferred` no es necesarimente más rápido y, a veces, es incluso más lento. En escenas más complejas es cuando supone una optimización significativa, especialmente con optimizaciones más avanzadas. Además de eso, algunos efectos de pintado, como los post procesos, son mucho más baratos, puesto que muchos de los datos necesarios ya están en el `G Buffer`.
+
+Básicamente todos los efectos que se pueden lograr con `forward` se pueden realizar tambien con `deferred`, solo se necesita un pequeño paso de traducción. Por ejemplo, si se quiere usar `normal mapping` con un `deferred`, hay que cambiar los shaders de la primera pasada de geometría para que produzcan un normal en espacio de mundo obtenida de un mapa de normales (usando una matriz `TBN`), en lugar de la normal de la superficie. Los cálculos en la pasada de iluminación no tienen que cambiar en nada. Para hacer funcionar el `parallax mapping`, hay que desplazar las coordenadas de textura en la primera pasada de geometría antes de samplear las texturas de difuso, specular y normal del objeto.
+
+# Ejercicios
+
+- Implementar el método de volúmenes de luz real, pintando estos volúmenes como esferas, tal como se describe en el apartado correspondiente
+- Implementar la técnica de `normal mapping` para que trabaje con `deferred`
+- Implementar la técnica de `parallax occlusion mapping` para que trabaje con `deferred`
+
+<link rel="stylesheet" href="res/md/viu.css">
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'long'};</script>
+<!-- Markdeep: --><script src="res/md/markdeep.min.js?" charset="utf-8"></script>
