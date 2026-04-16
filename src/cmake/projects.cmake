@@ -11,4 +11,5 @@ set(PROJECT_LIST
     09_Camera
     10_Camera_Class
     11_Phong_Blinn
+    12_LightMaps
     )
