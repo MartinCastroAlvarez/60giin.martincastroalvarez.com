@@ -16,25 +16,35 @@
 #include "engine/texture.hpp"
 #include "engine/camera.hpp"
 #include "engine/camera_controller.hpp"
+#include "engine/geometry/cube.hpp"
+#include "engine/geometry/quad.hpp"
 #include "engine/geometry/sphere.hpp"
 
 // Camera parameters
 Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
 CameraController cameraController(camera);
 
+std::vector<glm::vec3> cubePositions{
+  glm::vec3(0.0f, -0.5f, -4.0f),
+  glm::vec3(0.0f, -0.5f, 4.0f),
+  glm::vec3(-4.0f, -0.5f, -4.0f),
+  glm::vec3(-4.0f, -0.5f, 4.0f),
+  glm::vec3(-4.0f, -0.5f, 0.0f),
+  glm::vec3(4.0f, -0.5f, -4.0f),
+  glm::vec3(4.0f, -0.5f, 4.0f),
+  glm::vec3(4.0f, -0.5f, 0.0f)
+};
 
 void handleInput(const float deltaTime) {
   cameraController.handleInput(deltaTime);
 }
 
-void render(const Shader& shader_light, const Shader& shader_phong, const Geometry& geo, const Texture& t_albedo, const Texture& t_specular) {
+void render(const Shader& shader_light, const Shader& shader_phong, const Geometry& quad, const Geometry& cube, const Geometry& sphere, const Texture& t_albedo, const Texture& t_specular) {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-  glm::vec3 lightPos(0.5f, 0.5f, 2.0f);
+  glm::vec3 lightpos(0.0f, 2.0f, 0.0f);
+  glm::vec3 lightDir(0.3f, -1.0f, 0.7f);
   glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
-
-  glm::vec3 objectPos(0.0f, 0.0f, 0.0f);
-  glm::vec3 objectColor(0.7f, 0.4f, 0.2f);
 
   glm::mat4 view = camera.getViewMatrix();
   const glm::mat4 proj = glm::perspective(glm::radians(camera.getFOV()), (float)Window::instance()->getWidth() / (float)Window::instance()->getHeight(), camera.getNear(), camera.getFar());
@@ -44,8 +54,8 @@ void render(const Shader& shader_light, const Shader& shader_phong, const Geomet
     shader_light.use();
 
     glm::mat4 model = glm::mat4(1.0f);
-    model = glm::translate(model, lightPos);
-    model = glm::scale(model, glm::vec3(0.05f));
+    model = glm::translate(model, lightpos);
+    model = glm::scale(model, glm::vec3(0.1f));
 
     shader_light.set("model", model);
     shader_light.set("view", view);
@@ -53,17 +63,17 @@ void render(const Shader& shader_light, const Shader& shader_phong, const Geomet
 
     shader_light.set("lightColor", lightColor);
 
-    geo.render();
+    sphere.render();
   }
 
   // ---------------------------------------
-
   {
     shader_phong.use();
 
     glm::mat4 model = glm::mat4(1.0f);
-    model = glm::translate(model, objectPos);
-    model = glm::scale(model, glm::vec3(0.7f));
+    model = glm::translate(model, glm::vec3(0.0f, -1.0f ,0.0f));
+    model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+    model = glm::scale(model, glm::vec3(10.0f));
 
     const glm::mat3 normalMat = glm::transpose(glm::inverse(model));
 
@@ -72,18 +82,39 @@ void render(const Shader& shader_light, const Shader& shader_phong, const Geomet
     shader_phong.set("view", view);
     shader_phong.set("proj", proj);
 
-    shader_phong.set("light.position", lightPos);
+    shader_phong.set("viewPos", camera.getPosition());
+
+    shader_phong.set("light.position", lightpos);
+    shader_phong.set("light.direction", lightDir);
+    shader_phong.set("light.cutOff", glm::cos(glm::radians(30.0f)));
+    shader_phong.set("light.outerCutOff", glm::cos(glm::radians(32.0f)));
+
     shader_phong.set("light.ambient", lightColor * glm::vec3(0.1f));
     shader_phong.set("light.diffuse", lightColor * glm::vec3(0.8f));
-    shader_phong.set("light.specular", glm::vec3(0.6f));
+    shader_phong.set("light.specular", glm::vec3(1.0f));
+
+    shader_phong.set("light.constant", 1.0f);
+    shader_phong.set("light.linear", 0.14f);
+    shader_phong.set("light.quadratic", 0.07f);
 
     t_albedo.use(shader_phong, "material.diffuse", 0);
     t_specular.use(shader_phong, "material.specular", 1);
-    shader_phong.set("material.shininess", 64);
+    shader_phong.set("material.shininess", 64);    
 
-    shader_phong.set("viewPos", camera.getPosition());
+    quad.render();
+  }
 
-    geo.render();
+  // ---------------------------------------
+
+  for (auto& pos : cubePositions) {
+    glm::mat4 model = glm::mat4(1.0f);
+    model = glm::translate(model, pos);
+    const glm::mat3 normalMat = glm::transpose(glm::inverse(model));
+
+    shader_phong.set("model", model);
+    shader_phong.set("normalMat", normalMat);
+
+    cube.render();
   }
 }
 
@@ -96,7 +127,9 @@ int main(int argc, char* argv[]) {
 
   glClearColor(0.0f, 0.3f, 0.6f, 1.0f);
 
-  const Sphere geom = Sphere(1.0f, 25, 25);
+  const Cube cube = Cube(1.0f);
+  const Quad quad = Quad(1.0f);
+  const Sphere sphere = Sphere(1.0f, 20, 20);
   const Texture t_albedo(ASSETS_PATH "textures/bricks_albedo.png", Texture::Format::RGB);
   const Texture t_specular(ASSETS_PATH "textures/bricks_specular.png", Texture::Format::RGB);
   const Shader shader_light(PROJECT_PATH "light.vert", PROJECT_PATH "light.frag");
@@ -119,7 +152,7 @@ int main(int argc, char* argv[]) {
 
     handleInput(deltaTime);
     //update();
-    render(shader_light, shader_phong, geom, t_albedo, t_specular);
+    render(shader_light, shader_phong, quad, cube, sphere, t_albedo, t_specular);
 
     window->frame();
   }

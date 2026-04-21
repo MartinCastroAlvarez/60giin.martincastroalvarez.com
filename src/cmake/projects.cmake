@@ -12,4 +12,8 @@ set(PROJECT_LIST
     10_Camera_Class
     11_Phong_Blinn
     12_LightMaps
+    13_Directional_Light
+    14_Point_Light
+    15_Spot_Light
+    16_All_Lights
     )
