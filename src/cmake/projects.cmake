@@ -16,4 +16,5 @@ set(PROJECT_LIST
     14_Point_Light
     15_Spot_Light
     16_All_Lights
+    17_Load_Model
     )
