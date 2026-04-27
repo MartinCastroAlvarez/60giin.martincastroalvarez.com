@@ -56,6 +56,7 @@ set(DEPS_SRC_FILES_LINUX
     ${CMAKE_CURRENT_SOURCE_DIR}/src/deps/glfw/xkb_unicode.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/deps/glfw/osmesa_context.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/deps/glfw/posix_module.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/deps/glfw/posix_poll.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/deps/glfw/posix_time.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/deps/glfw/posix_thread.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/deps/glfw/linux_joystick.h)
@@ -77,6 +78,12 @@ set(DEPS_SRC_FILES_MACOS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/deps/glfw/cocoa_time.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/deps/glfw/posix_thread.h)
 
+if(MSVC)
+    set(DEPS_SILENCE_FLAGS "/W0")
+else()
+    set(DEPS_SILENCE_FLAGS "-w")
+endif()
+
 #Remove warnings for deps files
 set_source_files_properties(
     ${DEPS_SRC_FILES_COMMON}
@@ -84,5 +91,5 @@ set_source_files_properties(
     ${DEPS_SRC_FILES_LINUX}
     ${DEPS_SRC_FILES_MACOS}
     PROPERTIES
-    COMPILE_FLAGS "-W0"   #"-w"  for linux mint -> gcc13.3.0
+    COMPILE_FLAGS ${DEPS_SILENCE_FLAGS}
 )
