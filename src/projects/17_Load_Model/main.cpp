@@ -90,8 +90,6 @@ int main(int argc, char* argv[]) {
   window->setCaptureMouse(true);
   Input* input = Input::instance();
 
-  stbi_set_flip_vertically_on_load(true);
-
   glClearColor(0.0f, 0.3f, 0.6f, 1.0f);
 
   const Sphere geom = Sphere(1.0f, 25, 25);
