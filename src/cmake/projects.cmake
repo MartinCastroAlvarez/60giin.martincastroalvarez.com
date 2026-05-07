@@ -17,4 +17,5 @@ set(PROJECT_LIST
     15_Spot_Light
     16_All_Lights
     17_Load_Model
+    18_Normal_Mapping
     )
