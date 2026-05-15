@@ -18,4 +18,7 @@ set(PROJECT_LIST
     16_All_Lights
     17_Load_Model
     18_Normal_Mapping
+    19_FBO
+    20_Post_Processing
+    21_Shadow_Maps
     )
