@@ -1,0 +1,171 @@
+#version 410 core
+
+in vec3 fragPos;
+in vec4 fragPosLightSpace; // SHADOW MAP
+in vec3 normal;
+in vec2 uv;
+
+out vec4 FragColor;
+
+struct DirLight {
+	vec3 ambient;
+	vec3 diffuse;
+	vec3 specular;
+
+	vec3 direction;
+};
+uniform DirLight dirLight;
+
+struct PointLight {
+	vec3 ambient;
+	vec3 diffuse;
+	vec3 specular;
+
+	vec3 position;
+
+	float constant;
+	float linear;
+	float quadratic;
+};
+uniform PointLight pointLight0;
+uniform PointLight pointLight1;
+
+struct SpotLight {
+	vec3 ambient;
+	vec3 diffuse;
+	vec3 specular;
+
+	vec3 position;
+	vec3 direction;
+
+	float constant;
+	float linear;
+	float quadratic;
+
+	float cutOff;
+	float outerCutOff;
+};
+uniform SpotLight spotLight0;
+uniform SpotLight spotLight1;
+uniform SpotLight spotLight2; // Flashlight
+
+struct Material {
+	sampler2D diffuse;
+	sampler2D specular;
+	int shininess;
+};
+uniform Material material;
+
+// SHADOW MAP
+uniform sampler2D depthMap;
+
+float ShadowCalculation(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir) {
+	vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+	projCoords = projCoords * 0.5 + 0.5;
+
+	float currentDepth = projCoords.z;
+
+	float bias = max(0.05 * (1.0 - dot(normal, lightDir)), 0.005);
+	float shadow = 0.0;
+	vec2 texelSize = 1.0 / textureSize(depthMap, 0);
+	for(int x = -1; x <= 1; ++x) {
+		for(int y = -1; y <= 1; ++y) {
+			float pcfDepth = texture(depthMap, projCoords.xy + vec2(x, y) * texelSize).r;
+			shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
+		}
+	}
+	shadow /= 9.0;
+
+	if (projCoords.z > 1.0) {
+		shadow = 0.0;
+	}
+
+	return shadow;
+}
+
+
+
+
+
+vec3 calcDirectionalLight(DirLight light, vec3 normal, vec3 viewDir, vec3 albedo_map, vec3 specular_map, float shadow) {
+	vec3 ambient = albedo_map * light.ambient;
+
+	vec3 lightDir = normalize(-light.direction);
+	float diff = max(dot(normal, lightDir), 0.0);
+	vec3 diffuse = diff * albedo_map * light.diffuse;
+
+	// BLINN-PHONG REFLECTION MODEL
+	vec3 halfwayDir = normalize(lightDir + viewDir);
+	float spec = pow(max(dot(normal, halfwayDir), 0.0), material.shininess);
+	vec3 specular = spec * specular_map * light.specular;
+
+	return ambient + (1.0 - shadow) * (diffuse + specular); // SHADOW MAP
+}
+
+vec3 calcPointLight(PointLight light, vec3 normal, vec3 viewDir, vec3 fragPos, vec3 albedo_map, vec3 specular_map) {
+	vec3 ambient = albedo_map * light.ambient;
+
+	vec3 lightDir = light.position - fragPos;
+	float dist = length(lightDir);
+	lightDir = normalize(lightDir);
+
+	float attenuation = 1.0 /  (light.constant +
+								light.linear * dist +
+								light.quadratic * (dist * dist));
+
+	float diff = max(dot(normal, lightDir), 0.0);
+	vec3 diffuse = diff * albedo_map * light.diffuse;
+
+	// BLINN-PHONG REFLECTION MODEL
+	vec3 halfwayDir = normalize(lightDir + viewDir);
+	float spec = pow(max(dot(normal, halfwayDir), 0.0), material.shininess);
+	vec3 specular = spec * specular_map * light.specular;
+
+	return (ambient + diffuse + specular) * attenuation;
+}
+
+vec3 calcSpotLight(SpotLight light, vec3 normal, vec3 viewDir, vec3 fragPos, vec3 albedo_map, vec3 specular_map) {
+	vec3 ambient = albedo_map * light.ambient;
+
+	vec3 lightDir = light.position - fragPos;
+	float dist = length(lightDir);
+	lightDir = normalize(lightDir);
+
+	float attenuation = 1.0 /  (light.constant +
+								light.linear * dist +
+								light.quadratic * (dist * dist));
+
+	float diff = max(dot(normal, lightDir), 0.0);
+	vec3 diffuse = diff * albedo_map * light.diffuse;
+
+	// BLINN-PHONG REFLECTION MODEL
+	vec3 halfwayDir = normalize(lightDir + viewDir);
+	float spec = pow(max(dot(normal, halfwayDir), 0.0), material.shininess);
+	vec3 specular = spec * specular_map * light.specular;
+
+	float theta = dot(lightDir, normalize(-light.direction));
+	float epsilon = light.cutOff - light.outerCutOff;
+	float intensity = clamp((theta - light.outerCutOff) / max(epsilon, 0.00001), 0.0, 1.0);
+	return (ambient + (diffuse * intensity) + (specular * intensity)) * attenuation;
+}
+
+void main() {
+	vec3 albedo_map = vec3(texture(material.diffuse, uv));
+	vec3 specular_map = vec3(texture(material.specular, uv));
+
+	vec3 norm = normalize(normal);
+
+	vec3 viewDir = normalize(-fragPos);
+
+	float shadow = ShadowCalculation(fragPosLightSpace, norm, normalize(-dirLight.direction)); // SHADOW MAP
+	vec3 phong = calcDirectionalLight(dirLight, norm, viewDir, albedo_map, specular_map, shadow);
+
+	phong += calcPointLight(pointLight0, norm, viewDir, fragPos, albedo_map, specular_map);
+	phong += calcPointLight(pointLight1, norm, viewDir, fragPos, albedo_map, specular_map);
+
+	phong += calcSpotLight(spotLight0, norm, viewDir, fragPos, albedo_map, specular_map);
+	phong += calcSpotLight(spotLight1, norm, viewDir, fragPos, albedo_map, specular_map);
+	phong += calcSpotLight(spotLight2, norm, viewDir, fragPos, albedo_map, specular_map);
+
+	FragColor = vec4(phong, 1.0);
+}

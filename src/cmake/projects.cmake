@@ -28,4 +28,5 @@ set(PROJECT_LIST
     26_Actividad3_FlashLight_AllLights_ViewSpace
     27_ToggleFlashLight_AllLights_ViewSpace
     28_Sensitive_ToggleFlashLight_AllLights_ViewSpace
+    29_ShadowMap_Sensitive_ToggleFlashLight_AllLights_ViewSpace
     )
