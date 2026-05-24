@@ -286,6 +286,10 @@ int main(int argc, char* argv[]) {
   const Shader shader_light(PROJECT_PATH "light.vert", PROJECT_PATH "light.frag");
   const Shader shader_phong(PROJECT_PATH "phong.vert", PROJECT_PATH "phong.frag");
 
+  // CAMERA SENSITIVITY
+  camera.setMouseSensitivity(0.2f);
+  camera.setMovementSpeed(10.0f);
+
   glEnable(GL_CULL_FACE);
   glCullFace(GL_BACK);
 

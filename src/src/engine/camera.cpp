@@ -78,19 +78,21 @@ void Camera::updateCameraVectors() {
 }
 
 void Camera::handleKeyboard(Movement direction, float dt) {
-  const float velocity = k_Speed * dt;
+  const float velocity = movementSpeed_ * dt;
 
   switch(direction) {
     case Movement::Forward:     position_ += front_ * velocity;  break;
     case Movement::Backward:    position_ -= front_ * velocity;  break;
     case Movement::Left:        position_ -= right_ * velocity;  break;
     case Movement::Right:       position_ += right_ * velocity;  break;
+    case Movement::Up:          position_ += up_ * velocity;     break;
+    case Movement::Down:        position_ -= up_ * velocity;     break;
   }
 }
 
 void Camera::handleMouseMovement(float xoffset, float yoffset, bool constrainPitch) {
-  float xoff = xoffset * k_Sensitivity;
-  float yoff = yoffset * k_Sensitivity;
+  float xoff = xoffset * mouseSensitivity_;
+  float yoff = yoffset * mouseSensitivity_;
 
   yaw_ += xoff;
   pitch_ += yoff;

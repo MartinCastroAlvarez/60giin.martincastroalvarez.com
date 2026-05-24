@@ -28,6 +28,10 @@ void CameraController::handleInput(float deltaTime) {
     camera_.handleKeyboard(Camera::Movement::Left, deltaTime);
   if (input->isKeyPressed(GLFW_KEY_D))
     camera_.handleKeyboard(Camera::Movement::Right, deltaTime);
+  if (input->isKeyPressed(GLFW_KEY_E))
+    camera_.handleKeyboard(Camera::Movement::Up, deltaTime);
+  if (input->isKeyPressed(GLFW_KEY_Q))
+    camera_.handleKeyboard(Camera::Movement::Down, deltaTime);
 }
 
 void CameraController::onMouseMove(float x, float y) {

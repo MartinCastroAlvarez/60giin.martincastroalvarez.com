@@ -19,6 +19,8 @@ public:
     Backward = 1,
     Left = 2,
     Right = 3,
+    Up = 4,
+    Down = 5,
   };
 
   // Constructor with vectors
@@ -39,6 +41,9 @@ public:
   void handleMouseMovement(float xoffset, float yoffset, bool constrainPitch = true);
   void handleMouseScroll(float yoffset);
   void lookAt(const glm::vec3& target);
+
+  void setMovementSpeed(float speed) { movementSpeed_ = speed; }
+  void setMouseSensitivity(float sensitivity) { mouseSensitivity_ = sensitivity; }
 private:
   void updateCameraVectors();
 
@@ -47,4 +52,6 @@ private:
   float fov_;
   float near_ = k_Near;
   float far_ = k_Far;
+  float movementSpeed_ = k_Speed;
+  float mouseSensitivity_ = k_Sensitivity;
 };

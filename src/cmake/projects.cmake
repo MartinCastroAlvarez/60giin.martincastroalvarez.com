@@ -27,4 +27,5 @@ set(PROJECT_LIST
     25_Actividad2_LookAt_Animation
     26_Actividad3_FlashLight_AllLights_ViewSpace
     27_ToggleFlashLight_AllLights_ViewSpace
+    28_Sensitive_ToggleFlashLight_AllLights_ViewSpace
     )
