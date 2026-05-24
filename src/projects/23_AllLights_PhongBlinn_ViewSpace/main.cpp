@@ -184,78 +184,62 @@ void render(const Shader& shader_light, const Shader& shader_phong, const Geomet
     quad.render();
   }
 
-  // ---------------------------------------
+  // Cubes ---------------------------------------
 
   // Cube 0
   glm::mat4 model_cube0 = glm::mat4(1.0f);
   model_cube0 = glm::translate(model_cube0, cubePositions[0]);
   shader_phong.set("model", model_cube0);
-
   shader_phong.set("normalMat", glm::transpose(glm::inverse(glm::mat3(view * model_cube0))));
-
   cube.render();
 
   // Cube 1
   glm::mat4 model_cube1 = glm::mat4(1.0f);
   model_cube1 = glm::translate(model_cube1, cubePositions[1]);
   shader_phong.set("model", model_cube1);
-
   shader_phong.set("normalMat", glm::transpose(glm::inverse(glm::mat3(view * model_cube1))));
-
   cube.render();
 
   // Cube 2
   glm::mat4 model_cube2 = glm::mat4(1.0f);
   model_cube2 = glm::translate(model_cube2, cubePositions[2]);
   shader_phong.set("model", model_cube2);
-
   shader_phong.set("normalMat", glm::transpose(glm::inverse(glm::mat3(view * model_cube2))));
-
   cube.render();
 
   // Cube 3
   glm::mat4 model_cube3 = glm::mat4(1.0f);
   model_cube3 = glm::translate(model_cube3, cubePositions[3]);
   shader_phong.set("model", model_cube3);
-
   shader_phong.set("normalMat", glm::transpose(glm::inverse(glm::mat3(view * model_cube3))));
-
   cube.render();
 
   // Cube 4
   glm::mat4 model_cube4 = glm::mat4(1.0f);
   model_cube4 = glm::translate(model_cube4, cubePositions[4]);
   shader_phong.set("model", model_cube4);
-
   shader_phong.set("normalMat", glm::transpose(glm::inverse(glm::mat3(view * model_cube4))));
-
   cube.render();
 
   // Cube 5
   glm::mat4 model_cube5 = glm::mat4(1.0f);
   model_cube5 = glm::translate(model_cube5, cubePositions[5]);
   shader_phong.set("model", model_cube5);
-
   shader_phong.set("normalMat", glm::transpose(glm::inverse(glm::mat3(view * model_cube5))));
-
   cube.render();
 
   // Cube 6
   glm::mat4 model_cube6 = glm::mat4(1.0f);
   model_cube6 = glm::translate(model_cube6, cubePositions[6]);
   shader_phong.set("model", model_cube6);
-
   shader_phong.set("normalMat", glm::transpose(glm::inverse(glm::mat3(view * model_cube6))));
-
   cube.render();
 
   // Cube 7
   glm::mat4 model_cube7 = glm::mat4(1.0f);
   model_cube7 = glm::translate(model_cube7, cubePositions[7]);
   shader_phong.set("model", model_cube7);
-
   shader_phong.set("normalMat", glm::transpose(glm::inverse(glm::mat3(view * model_cube7))));
-
   cube.render();
 }
 

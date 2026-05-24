@@ -84,6 +84,7 @@ vec3 calcPointLight(PointLight light, vec3 normal, vec3 viewDir, vec3 fragPos, v
 	float diff = max(dot(normal, lightDir), 0.0);
 	vec3 diffuse = diff * albedo_map * light.diffuse;
 
+	// BLINN-PHONG MODEL
 	vec3 halfwayDir = normalize(lightDir + viewDir);
 	float spec = pow(max(dot(normal, halfwayDir), 0.0), material.shininess);
 	vec3 specular = spec * specular_map * light.specular;
