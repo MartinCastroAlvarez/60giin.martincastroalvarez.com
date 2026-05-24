@@ -29,4 +29,5 @@ set(PROJECT_LIST
     27_ToggleFlashLight_AllLights_ViewSpace
     28_Sensitive_ToggleFlashLight_AllLights_ViewSpace
     29_ShadowMap_Sensitive_ToggleFlashLight_AllLights_ViewSpace
+    30_Pyramids_ShadowMap_Sensitive_ToggleFlashLight_AllLights_ViewSpace
     )
