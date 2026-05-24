@@ -14,6 +14,10 @@ out vec3 normal;
 
 void main() {
 	normal = normalMat * aNormal;
-    fragPos = vec3(model * vec4(aPos, 1.0));
+
+	// frahPos in view space
+    fragPos = vec3(view * model * vec4(aPos, 1.0));
+
+	// glPosition in projection space
 	gl_Position = proj * view * model * vec4(aPos, 1.0);
 }

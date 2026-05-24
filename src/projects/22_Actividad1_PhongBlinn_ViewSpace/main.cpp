@@ -67,14 +67,14 @@ void render(const Shader &shader_light, const Shader &shader_phong, const Geomet
     model = glm::translate(model, spherePos);
     model = glm::scale(model, glm::vec3(0.7f));
 
-    const glm::mat3 normalMat = glm::transpose(glm::inverse(model));
+    const glm::mat3 normalMat = glm::transpose(glm::inverse(glm::mat3(view * model)));
 
     shader_phong.set("model", model);
     shader_phong.set("normalMat", normalMat);
     shader_phong.set("view", view);
     shader_phong.set("proj", proj);
 
-    shader_phong.set("light.position", lightPos);
+    shader_phong.set("light.position", glm::vec3(view * glm::vec4(lightPos, 1.0f)));
     shader_phong.set("light.ambient", lightColor * glm::vec3(0.1f));
     shader_phong.set("light.diffuse", lightColor * glm::vec3(0.8f));
     shader_phong.set("light.specular", glm::vec3(0.6f));
@@ -83,8 +83,6 @@ void render(const Shader &shader_light, const Shader &shader_phong, const Geomet
     shader_phong.set("material.diffuse", sphereColor);
     shader_phong.set("material.specular", sphereColor);
     shader_phong.set("material.shininess", 64);
-
-    shader_phong.set("viewPos", camera.getPosition());
 
     geo1.render();
   }
@@ -97,14 +95,14 @@ void render(const Shader &shader_light, const Shader &shader_phong, const Geomet
     model = glm::translate(model, cubePost);
     model = glm::scale(model, glm::vec3(0.1f));
 
-    const glm::mat3 normalMat = glm::transpose(glm::inverse(model));
+    const glm::mat3 normalMat = glm::transpose(glm::inverse(glm::mat3(view * model)));
 
     shader_phong.set("model", model);
     shader_phong.set("normalMat", normalMat);
     shader_phong.set("view", view);
     shader_phong.set("proj", proj);
 
-    shader_phong.set("light.position", lightPos);
+    shader_phong.set("light.position", glm::vec3(view * glm::vec4(lightPos, 1.0f)));
     shader_phong.set("light.ambient", lightColor * glm::vec3(0.1f));
     shader_phong.set("light.diffuse", lightColor * glm::vec3(0.8f));
     shader_phong.set("light.specular", glm::vec3(0.6f));
@@ -113,8 +111,6 @@ void render(const Shader &shader_light, const Shader &shader_phong, const Geomet
     shader_phong.set("material.diffuse", cubeColor);
     shader_phong.set("material.specular", cubeColor);
     shader_phong.set("material.shininess", 64);
-
-    shader_phong.set("viewPos", camera.getPosition());
 
     geo2.render();
   }
