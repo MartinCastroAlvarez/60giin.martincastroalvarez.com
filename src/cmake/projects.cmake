@@ -21,4 +21,5 @@ set(PROJECT_LIST
     19_FBO
     20_Post_Processing
     21_Shadow_Maps
+    22_Actividad1_PhongBlinn_ViewSpace
     )

@@ -31,16 +31,11 @@ elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
   fi
 fi
 
-# Build project
-pwd 
-cmake ../src/
-
 # Find project
 if [ "$1" == "" ]
 then
   echo "Usage: $0 <project-number>"
 fi
-
 PROJECT=$(ls -d ../src/projects/${1}* | xargs -I{} basename {})
 echo $PROJECT
 if [ $(echo "$PROJECT" | wc -l) != 1 ] 
@@ -48,6 +43,17 @@ then
   echo "ERROR: Failed to find project"
 fi
 
+# Check project
+CMAKE_FILE="../src/cmake/projects.cmake"
+if [ "$(grep $PROJECT $CMAKE_FILE)" == "" ]
+then
+  echo "ERROR: Project not found in $CMAKE_FILE"
+  exit 1
+fi
+
+# Build project
+pwd 
+cmake ../src/
 make $PROJECT
 
 # Execute project
