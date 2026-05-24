@@ -64,9 +64,6 @@ void render(const Shader &shader_light, const Shader &shader_phong, const Geomet
     model = glm::translate(model, spherePos);
     model = glm::scale(model, glm::vec3(0.7f));
 
-    // WORLD SPACE
-    // const glm::mat3 normalMat = glm::transpose(glm::inverse(model));
-    // VIEW SPACE
     const glm::mat3 normalMat = glm::transpose(glm::inverse(glm::mat3(view * model)));
 
     shader_phong.set("model", model);
@@ -74,12 +71,6 @@ void render(const Shader &shader_light, const Shader &shader_phong, const Geomet
     shader_phong.set("view", view);
     shader_phong.set("proj", proj);
 
-    // WORLD SPACE
-    // shader_phong.set("viewPos", camera.getPosition());
-
-    // WORLD SPACE
-    // shader_phong.set("light.position", lightPos);
-    // VIEW SPACE
     shader_phong.set("light.position", glm::vec3(view * glm::vec4(lightPos, 1.0f)));
     shader_phong.set("light.ambient", lightColor * glm::vec3(0.1f));
     shader_phong.set("light.diffuse", lightColor * glm::vec3(0.8f));
@@ -101,9 +92,6 @@ void render(const Shader &shader_light, const Shader &shader_phong, const Geomet
     model = glm::translate(model, cubePost);
     model = glm::scale(model, glm::vec3(0.1f));
 
-    // WORLD SPACE
-    // const glm::mat3 normalMat = glm::transpose(glm::inverse(model));
-    // VIEW SPACE
     const glm::mat3 normalMat = glm::transpose(glm::inverse(glm::mat3(view * model)));
 
     shader_phong.set("model", model);
@@ -111,12 +99,6 @@ void render(const Shader &shader_light, const Shader &shader_phong, const Geomet
     shader_phong.set("view", view);
     shader_phong.set("proj", proj);
 
-    // WORLD SPACE
-    // shader_phong.set("viewPos", camera.getPosition());
-
-    // WORLD SPACE
-    // shader_phong.set("light.position", lightPos);
-    // VIEW SPACE
     shader_phong.set("light.position", glm::vec3(view * glm::vec4(lightPos, 1.0f)));
     shader_phong.set("light.ambient", lightColor * glm::vec3(0.1f));
     shader_phong.set("light.diffuse", lightColor * glm::vec3(0.8f));

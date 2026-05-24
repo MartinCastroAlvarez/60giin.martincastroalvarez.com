@@ -31,6 +31,7 @@ public:
   [[nodiscard]] static glm::mat4 lookAt(const glm::vec3& position, const glm::vec3& target, const glm::vec3& worldUp);
   [[nodiscard]] float getFOV() const;
   [[nodiscard]] glm::vec3 getPosition() const;
+  [[nodiscard]] glm::vec3 getDirection() const;
   [[nodiscard]] float getNear() const;
   [[nodiscard]] float getFar() const;
 

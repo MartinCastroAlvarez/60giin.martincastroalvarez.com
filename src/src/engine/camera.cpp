@@ -54,6 +54,10 @@ glm::vec3 Camera::getPosition() const {
   return position_;
 }
 
+glm::vec3 Camera::getDirection() const {
+  return front_;
+}
+
 float Camera::getNear() const {
   return near_;
 }
