@@ -42,3 +42,5 @@
 bin
 third_party
 build
+
+.run.sh.swp
