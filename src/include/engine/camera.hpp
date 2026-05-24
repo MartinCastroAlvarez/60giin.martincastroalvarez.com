@@ -28,6 +28,7 @@ public:
   Camera(float posX, float posY, float posZ, float upX, float upY, float upZ, float yaw, float pitch);
 
   [[nodiscard]] glm::mat4 getViewMatrix() const;
+  [[nodiscard]] static glm::mat4 lookAt(const glm::vec3& position, const glm::vec3& target, const glm::vec3& worldUp);
   [[nodiscard]] float getFOV() const;
   [[nodiscard]] glm::vec3 getPosition() const;
   [[nodiscard]] float getNear() const;
@@ -36,7 +37,7 @@ public:
   void handleKeyboard(Movement direction, float dt);
   void handleMouseMovement(float xoffset, float yoffset, bool constrainPitch = true);
   void handleMouseScroll(float yoffset);
-
+  void lookAt(const glm::vec3& target);
 private:
   void updateCameraVectors();
 

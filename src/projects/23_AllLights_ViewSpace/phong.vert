@@ -11,15 +11,13 @@ uniform mat4 proj;
 
 out vec3 fragPos;
 out vec3 normal;
+out vec2 uv;
 
 void main() {
+	uv = aTexCoord;
 	normal = normalMat * aNormal;
-
-	// WORLD SPACE
-    // fragPos = vec3(model * vec4(aPos, 1.0));
-    // VIEW SPACE
+	
     fragPos = vec3(view * model * vec4(aPos, 1.0));
 
-	// glPosition in projection space
 	gl_Position = proj * view * model * vec4(aPos, 1.0);
 }

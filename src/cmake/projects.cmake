@@ -22,4 +22,5 @@ set(PROJECT_LIST
     20_Post_Processing
     21_Shadow_Maps
     22_Actividad1_PhongBlinn_ViewSpace
+    23_AllLights_ViewSpace
     )
