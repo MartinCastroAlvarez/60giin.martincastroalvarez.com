@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
+#include <unordered_set>
 
 class GLFWwindow;
 
@@ -23,6 +25,10 @@ class Window {
 
         static bool isKeyPressed(int key);
 
+        [[nodiscard]] bool hasFlag(int key) const;
+        [[nodiscard]] std::vector<int> getFlags() const;
+        void toggleFlag(int key);
+
         void setCaptureMouse(bool toggle) const;
 
     private:
@@ -36,4 +42,6 @@ class Window {
         GLFWwindow* _window;
         uint32_t _width = 800;
         uint32_t _height = 800;
+
+        std::unordered_set<int> _flags;
 };

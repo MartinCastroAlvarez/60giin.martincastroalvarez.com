@@ -20,6 +20,9 @@ void onKeyPressed(GLFWwindow* window, int key, int /*scancode*/, int action, int
     if (action == GLFW_PRESS && key == GLFW_KEY_ESCAPE) {
         glfwSetWindowShouldClose(window, true);
     } else {
+        if (action == GLFW_PRESS) {
+            Window::instance()->toggleFlag(key);
+        }
         Input::instance()->keyPressed(key, action);
     }
 }
@@ -99,4 +102,22 @@ void Window::setCaptureMouse(bool toggle) const {
     } else {
         glfwSetInputMode(_window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
     }
+}
+
+void Window::toggleFlag(int key) {
+    if (key == GLFW_KEY_ENTER || key == GLFW_KEY_SPACE || key == GLFW_KEY_TAB) {
+        if (_flags.find(key) != _flags.end()) {
+            _flags.erase(key);
+        } else {
+            _flags.insert(key);
+        }
+    }
+}
+
+bool Window::hasFlag(int key) const {
+    return _flags.find(key) != _flags.end();
+}
+
+std::vector<int> Window::getFlags() const {
+    return std::vector<int>(_flags.begin(), _flags.end());
 }
