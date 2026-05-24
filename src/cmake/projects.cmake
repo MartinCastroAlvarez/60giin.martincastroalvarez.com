@@ -24,4 +24,5 @@ set(PROJECT_LIST
     22_Actividad1_PhongBlinn_ViewSpace
     23_AllLights_PhongBlinn_ViewSpace
     24_AllLights_Phong_ViewSpace
+    25_Actividad2_LookAt_Animation
     )
