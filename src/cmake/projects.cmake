@@ -39,4 +39,5 @@ set(PROJECT_LIST
     37_Actividad5_FBO
     38_Horus_ViewPort_Sun_Shadow_Class_NormalMapping_ShadowMap_Sensitive_ToggleFlashLight_AllLights_ViewSpace
     39_Colors_Horus_ViewPort_Sun_Shadow_Class_NormalMapping_ShadowMap_Sensitive_ToggleFlashLight_AllLights_ViewSpace
+    40_Actividad3_Horus
     )
