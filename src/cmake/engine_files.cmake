@@ -1,6 +1,7 @@
 #Engine Source Files
 set(ENGINE_SRC_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/engine/shadow.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/engine/viewport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/engine/window.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/engine/shader.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/engine/texture.cpp
@@ -18,6 +19,7 @@ set(ENGINE_SRC_FILES
 
 set(ENGINE_HEADER_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/engine/shadow.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/engine/viewport.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/engine/window.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/engine/input.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/engine/shader.hpp
