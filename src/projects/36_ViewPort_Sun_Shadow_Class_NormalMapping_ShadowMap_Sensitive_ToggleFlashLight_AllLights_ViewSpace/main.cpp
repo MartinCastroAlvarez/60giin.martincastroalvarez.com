@@ -147,7 +147,18 @@ void render(const Shader& shader_light, const Shader& shader_phong, const Shader
   // SHADOW MAP
   glm::vec3 lightDirWorld = normalize(-sunPosition); // Point shadow map camera from sun to origin
   Shadow* shadow = Shadow::instance();
+  // Ensure we place the camera at distance 15.0 to encompass the sun's max orbit distance
+  shadow->setDistance(15.0f);
   glm::mat4 lightSpaceMatrix = shadow->getLightSpaceMatrix(lightDirWorld);
+
+  // PASS 1: DEPTH MAP
+  shadow->bindFBO();
+  glClear(GL_DEPTH_BUFFER_BIT);
+  glEnable(GL_DEPTH_TEST);
+  glCullFace(GL_FRONT);
+
+  shader_depth.use();
+  shader_depth.set("lightSpaceMatrix", lightSpaceMatrix);
 
   // DEPTH PASS SCENE RENDER
   drawQuad(shader_depth, static_cast<const Quad&>(quad));
@@ -164,6 +175,7 @@ void render(const Shader& shader_light, const Shader& shader_phong, const Shader
   int fbWidth, fbHeight;
   glfwGetFramebufferSize(Window::instance()->getNativeWindow(), &fbWidth, &fbHeight);
   shadow->unbindFBO(fbWidth, fbHeight);
+  glCullFace(GL_BACK);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   auto draw = [&](const glm::mat4& sceneView, const glm::mat4& sceneProj) {
 
@@ -209,7 +221,7 @@ void render(const Shader& shader_light, const Shader& shader_phong, const Shader
     shader_phong.set("dirLight.ambient", dirLightColor * glm::vec3(0.1f));
     shader_phong.set("dirLight.diffuse", dirLightColor * glm::vec3(0.8f));
     shader_phong.set("dirLight.specular", glm::vec3(1.0f));
-    shader_phong.set("shadowIntensity", Shadow::instance()->getIntensity());
+    shader_phong.set("shadowIntensity", shadow->getIntensity());
 
     // Point Light 0
     setupPointLight(shader_phong, "pointLight0", pointLightPosition0, pointLightColor0, sceneView);
@@ -301,7 +313,7 @@ int main(int argc, char* argv[]) {
   Shadow* shadow = Shadow::instance();
   shadow->init();
   shadow->setOrthoBoxSize(10.0f);
-  shadow->setDistance(10.0f);
+  shadow->setDistance(15.0f); // Make sure it encompasses the oscillating sun
   shadow->setIntensity(0.8f);
 
   // CAMERA SENSITIVITY
@@ -324,8 +336,9 @@ int main(int argc, char* argv[]) {
     const float deltaTime = currentFrame - lastFrame;
     lastFrame = currentFrame;
 
-    handleInput(deltaTime);
-    //update();
+    handleInput(deltaTime); // Keyboard enabled!
+
+    // update();
     render(
       shader_light,
       shader_phong,
