@@ -158,7 +158,7 @@ void main() {
 
 	phong += calcPointLight(pointLight0, norm, viewDir, fragPos, albedo_map, specular_map, material.shininess);
 	phong += calcPointLight(pointLight1, norm, viewDir, fragPos, albedo_map, specular_map, material.shininess);
-	phong += calcPointLight(pointLight2, norm, viewDir, fragPos, albedo_map, specular_map, material.shininess); // SUN
+	// phong += calcPointLight(pointLight2, norm, viewDir, fragPos, albedo_map, specular_map, material.shininess); // SUN (Disabled to not overwrite shadows)
 
 	phong += calcSpotLight(spotLight0, norm, viewDir, fragPos, albedo_map, specular_map, material.shininess);
 	phong += calcSpotLight(spotLight1, norm, viewDir, fragPos, albedo_map, specular_map, material.shininess);

@@ -1,5 +1,6 @@
 #include "engine/shadow.hpp"
 #include <iostream>
+#include <cmath>
 
 Shadow* Shadow::_instance = nullptr;
 
@@ -59,6 +60,12 @@ void Shadow::unbindFBO(uint32_t restoreWidth, uint32_t restoreHeight) const {
 glm::mat4 Shadow::getLightSpaceMatrix(const glm::vec3& lightDirWorld) const {
   glm::vec3 lightPosForShadow = -lightDirWorld * _distance;
   glm::mat4 lightProjection = glm::ortho(-_orthoBoxSize, _orthoBoxSize, -_orthoBoxSize, _orthoBoxSize, _nearPlane, _farPlane);
-  glm::mat4 lightView = glm::lookAt(lightPosForShadow, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+  
+  glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+  if (std::abs(glm::dot(glm::normalize(lightPosForShadow), up)) > 0.999f) {
+    up = glm::vec3(0.0f, 0.0f, 1.0f);
+  }
+  
+  glm::mat4 lightView = glm::lookAt(lightPosForShadow, glm::vec3(0.0f), up);
   return lightProjection * lightView;
 }

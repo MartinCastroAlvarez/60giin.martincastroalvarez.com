@@ -22,6 +22,7 @@
 #include "engine/geometry/pyramid.hpp"
 #include "engine/geometry/quad.hpp"
 #include "engine/geometry/sphere.hpp"
+#include "engine/oscillation.hpp"
 
 // Camera parameters
 Camera camera(glm::vec3(0.0f, 5.0f, 10.0f));
@@ -29,7 +30,7 @@ CameraController cameraController(camera);
 
 // DIRECTIONAL LIGHT CONFIGURATION
 glm::vec3 dirLightDirection(-0.4f, -1.0f, -0.5f); // Direction of the sun / shadow
-glm::vec3 dirLightColor(0.4f, 0.4f, 0.4f);
+glm::vec3 dirLightColor(1.0f, 1.0f, 1.0f);
 
 // NORMAL MAPPING CONFIGURATION
 float normalIntensity = 1.0f;     // How strong the bumps appear (0.0 = completely flat, 1.0 = normal)
@@ -104,7 +105,7 @@ void drawPyramid(const Shader& shader, const Pyramid& pyramid, const glm::vec3& 
   pyramid.render();
 }
 
-void drawLightSphere(const Shader& shader_light, const Sphere& sphere, const glm::vec3& pos, const glm::vec3& color, float scale = 0.1f) {
+void drawPointLight(const Shader& shader_light, const Sphere& sphere, const glm::vec3& pos, const glm::vec3& color, float scale = 0.1f) {
   glm::mat4 m = glm::mat4(1.0f);
   m = glm::translate(m, pos);
   m = glm::scale(m, glm::vec3(scale));
@@ -137,7 +138,8 @@ void setupSpotLight(const Shader& shader_phong, const std::string& name, const g
 }
 
 void render(const Shader& shader_light, const Shader& shader_phong, const Shader& shader_depth, const Shader& shader_fbo, const Geometry& quad, const Geometry& cube, const Geometry& pyramid, const Geometry& sphere, const Texture& texture_material, const Texture& texture_reflection, const Texture& texture_normal, float time) {
-  glm::vec3 sunPosition(sin(time * sunSpeed) * sunRadius, 5.0f, cos(time * sunSpeed) * sunRadius);
+  Oscillation sunOscillation(glm::vec3(0.0f, 5.0f, 0.0f), sunRadius, glm::vec3(sunSpeed, 0.0f, sunSpeed));
+  glm::vec3 sunPosition = sunOscillation.getPosition(time);
 
   glm::mat4 view = camera.getViewMatrix();
   const glm::mat4 proj = glm::perspective(glm::radians(camera.getFOV()), (float)Window::instance()->getWidth() / (float)Window::instance()->getHeight(), camera.getNear(), camera.getFar());
@@ -172,13 +174,13 @@ void render(const Shader& shader_light, const Shader& shader_phong, const Shader
     shader_light.set("proj", sceneProj);
 
     // Point lights
-    drawLightSphere(shader_light, static_cast<const Sphere&>(sphere), pointLightPosition0, pointLightColor0);
-    drawLightSphere(shader_light, static_cast<const Sphere&>(sphere), pointLightPosition1, pointLightColor1);
+    drawPointLight(shader_light, static_cast<const Sphere&>(sphere), pointLightPosition0, pointLightColor0);
+    drawPointLight(shader_light, static_cast<const Sphere&>(sphere), pointLightPosition1, pointLightColor1);
     // Sun (Point Light 2)
-    drawLightSphere(shader_light, static_cast<const Sphere&>(sphere), sunPosition, glm::vec3(1.0f), 0.2f);
+    drawPointLight(shader_light, static_cast<const Sphere&>(sphere), sunPosition, glm::vec3(1.0f), 0.2f);
     // Spot lights
-    drawLightSphere(shader_light, static_cast<const Sphere&>(sphere), spotLightPosition0, spotLightColor0);
-    drawLightSphere(shader_light, static_cast<const Sphere&>(sphere), spotLightPosition1, spotLightColor1);
+    drawPointLight(shader_light, static_cast<const Sphere&>(sphere), spotLightPosition0, spotLightColor0);
+    drawPointLight(shader_light, static_cast<const Sphere&>(sphere), spotLightPosition1, spotLightColor1);
   }
 
   // ---------------------------------------
@@ -213,8 +215,8 @@ void render(const Shader& shader_light, const Shader& shader_phong, const Shader
     setupPointLight(shader_phong, "pointLight0", pointLightPosition0, pointLightColor0, sceneView);
     // Point Light 1
     setupPointLight(shader_phong, "pointLight1", pointLightPosition1, pointLightColor1, sceneView);
-    // Sun (Point Light 2)
-    setupPointLight(shader_phong, "pointLight2", sunPosition, glm::vec3(1.0f), sceneView, 0.09f, 0.032f);
+    // Sun (Point Light 2) - Disabled because it washes out the shadows from dirLight!
+    // setupPointLight(shader_phong, "pointLight2", sunPosition, glm::vec3(1.0f), sceneView, 0.09f, 0.032f);
 
     // Spot Light 0
     setupSpotLight(shader_phong, "spotLight0", spotLightPosition0, spotLightDirection0, spotLightColor0, sceneView);
