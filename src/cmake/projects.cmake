@@ -35,5 +35,6 @@ set(PROJECT_LIST
     33_Sun_Shadow_Class_NormalMapping_ShadowMap_Sensitive_ToggleFlashLight_AllLights_ViewSpace
     34_SmallCamera_Sun_Shadow_Class_NormalMapping_ShadowMap_Sensitive_ToggleFlashLight_AllLights_ViewSpace
     35_ViewPort_Sun_Shadow_Class_NormalMapping_ShadowMap_Sensitive_ToggleFlashLight_AllLights_ViewSpace
-    36_Actividad5_FBO
+    36_ViewPort_Sun_Shadow_Class_NormalMapping_ShadowMap_Sensitive_ToggleFlashLight_AllLights_ViewSpace
+    37_Actividad5_FBO
     )
