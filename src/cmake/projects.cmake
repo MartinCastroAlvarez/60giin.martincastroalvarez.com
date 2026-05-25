@@ -32,4 +32,5 @@ set(PROJECT_LIST
     30_Pyramids_ShadowMap_Sensitive_ToggleFlashLight_AllLights_ViewSpace
     31_NormalMapping_ShadowMap_Sensitive_ToggleFlashLight_AllLights_ViewSpace
     32_Shadow_Class_NormalMapping_ShadowMap_Sensitive_ToggleFlashLight_AllLights_ViewSpace
+    33_Sun_Shadow_Class_NormalMapping_ShadowMap_Sensitive_ToggleFlashLight_AllLights_ViewSpace
     )
