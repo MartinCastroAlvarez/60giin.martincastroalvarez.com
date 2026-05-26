@@ -44,11 +44,11 @@ const int SPHERE_SECTORS = 20;
 const int SPHERE_STACKS = 20;
 
 // LIGHT CONSTANTS
-const glm::vec3 POINT_LIGHT_POSITION(0.0f, 3.0f, 0.0f);
-const glm::vec3 POINT_LIGHT_COLOR(1.0f, 1.0f, 1.0f);
-const float POINT_LIGHT_SPEED = 1.0f;
-const float POINT_LIGHT_RADIUS = 4.0f;
-const float POINT_LIGHT_INTENSITY = 3.0f;
+const glm::vec3 POINT_LIGHT_DIFUSE_POSITION(0.0f, 3.0f, 0.0f);
+const glm::vec3 POINT_LIGHT_DIFUSE_COLOR(1.0f, 1.0f, 1.0f);
+const float POINT_LIGHT_DIFUSE_SPEED = 1.0f;
+const float POINT_LIGHT_DIFUSE_RADIUS = 4.0f;
+const float POINT_LIGHT_DIFUSE_INTENSITY = 3.0f;
 
 Camera camera(CAMERA_POSITION);
 CameraController cameraController(camera);
@@ -97,8 +97,8 @@ void drawPointLight(const Shader& shader_light, const Sphere& sphere, const glm:
 void render(const Shader& shader_light, const Shader& shader_phong, const Quad& quad, const Cube& cube, const Pyramid& pyramid, const Sphere& sphere, const Texture& t_albedo, const Texture& t_specular, float time) {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-  Oscillation lightOscillation(POINT_LIGHT_POSITION, POINT_LIGHT_RADIUS, glm::vec3(POINT_LIGHT_SPEED, 0.0f, POINT_LIGHT_SPEED));
-  glm::vec3 currentLightPos = lightOscillation.getPosition(time);
+  Oscillation lightOscillationDifuse(POINT_LIGHT_DIFUSE_POSITION, POINT_LIGHT_DIFUSE_RADIUS, glm::vec3(POINT_LIGHT_DIFUSE_SPEED, 0.0f, POINT_LIGHT_DIFUSE_SPEED));
+  glm::vec3 currentLightPosDifuse = lightOscillationDifuse.getPosition(time);
 
   glm::mat4 view = camera.getViewMatrix();
   const glm::mat4 proj = glm::perspective(glm::radians(camera.getFOV()), (float)Window::instance()->getWidth() / (float)Window::instance()->getHeight(), camera.getNear(), camera.getFar());
@@ -107,7 +107,7 @@ void render(const Shader& shader_light, const Shader& shader_phong, const Quad& 
   shader_light.use();
   shader_light.set("view", view);
   shader_light.set("proj", proj);
-  drawPointLight(shader_light, sphere, currentLightPos, POINT_LIGHT_COLOR);
+  drawPointLight(shader_light, sphere, currentLightPosDifuse, POINT_LIGHT_DIFUSE_COLOR);
 
   // Render Scene
   shader_phong.use();
@@ -115,13 +115,13 @@ void render(const Shader& shader_light, const Shader& shader_phong, const Quad& 
   shader_phong.set("proj", proj);
 
   // View Space: light position must be multiplied by view matrix
-  shader_phong.set("light.position", glm::vec3(view * glm::vec4(currentLightPos, 1.0f)));
-  shader_phong.set("light.ambient", POINT_LIGHT_COLOR * POINT_LIGHT_INTENSITY * 0.1f);
-  shader_phong.set("light.diffuse", POINT_LIGHT_COLOR * POINT_LIGHT_INTENSITY * 0.8f);
-  shader_phong.set("light.specular", POINT_LIGHT_COLOR * POINT_LIGHT_INTENSITY);
-  shader_phong.set("light.constant", 1.0f);
-  shader_phong.set("light.linear", 0.09f);
-  shader_phong.set("light.quadratic", 0.032f);
+  shader_phong.set("lightDifuse.position", glm::vec3(view * glm::vec4(currentLightPosDifuse, 1.0f)));
+  shader_phong.set("lightDifuse.ambient", POINT_LIGHT_DIFUSE_COLOR * POINT_LIGHT_DIFUSE_INTENSITY * 0.1f);
+  shader_phong.set("lightDifuse.diffuse", POINT_LIGHT_DIFUSE_COLOR * POINT_LIGHT_DIFUSE_INTENSITY * 0.8f);
+  shader_phong.set("lightDifuse.specular", POINT_LIGHT_DIFUSE_COLOR * POINT_LIGHT_DIFUSE_INTENSITY);
+  shader_phong.set("lightDifuse.constant", 1.0f);
+  shader_phong.set("lightDifuse.linear", 0.09f);
+  shader_phong.set("lightDifuse.quadratic", 0.032f);
 
   t_albedo.use(shader_phong, "material.diffuse", 0);
   t_specular.use(shader_phong, "material.specular", 1);

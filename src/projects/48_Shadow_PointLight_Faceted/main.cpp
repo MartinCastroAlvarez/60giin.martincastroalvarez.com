@@ -44,11 +44,11 @@ const int SPHERE_SECTORS = 20;
 const int SPHERE_STACKS = 20;
 
 // LIGHT CONSTANTS
-const glm::vec3 POINT_LIGHT_POSITION(0.0f, 3.0f, 0.0f);
-const glm::vec3 POINT_LIGHT_COLOR(1.0f, 1.0f, 1.0f);
-const float POINT_LIGHT_SPEED = 1.0f;
-const float POINT_LIGHT_RADIUS = 4.0f;
-const float POINT_LIGHT_INTENSITY = 3.0f;
+const glm::vec3 POINT_LIGHT_FACETED_POSITION(0.0f, 3.0f, 0.0f);
+const glm::vec3 POINT_LIGHT_FACETED_COLOR(1.0f, 1.0f, 1.0f);
+const float POINT_LIGHT_FACETED_SPEED = 1.0f;
+const float POINT_LIGHT_FACETED_RADIUS = 4.0f;
+const float POINT_LIGHT_FACETED_INTENSITY = 3.0f;
 
 Camera camera(CAMERA_POSITION);
 CameraController cameraController(camera);
@@ -104,15 +104,15 @@ void drawPointLight(const Shader& shader_light, const Sphere& sphere, const glm:
 void render(const Shader& shader_light, const Shader& shader_phong, const Quad& quad, const Cube& cube, const Pyramid& pyramid, const Sphere& sphere, const Shader& shader_depth, float time) {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-  Oscillation lightOscillation(POINT_LIGHT_POSITION, POINT_LIGHT_RADIUS, glm::vec3(POINT_LIGHT_SPEED, 0.0f, POINT_LIGHT_SPEED));
-  glm::vec3 currentLightPos = lightOscillation.getPosition(time);
+  Oscillation lightOscillationFaceted(POINT_LIGHT_FACETED_POSITION, POINT_LIGHT_FACETED_RADIUS, glm::vec3(POINT_LIGHT_FACETED_SPEED, 0.0f, POINT_LIGHT_FACETED_SPEED));
+  glm::vec3 currentLightPosFaceted = lightOscillationFaceted.getPosition(time);
 
   glm::mat4 view = camera.getViewMatrix();
   const glm::mat4 proj = glm::perspective(glm::radians(camera.getFOV()), (float)Window::instance()->getWidth() / (float)Window::instance()->getHeight(), camera.getNear(), camera.getFar());
 
-  glm::vec3 lightDirWorld = glm::normalize(-currentLightPos);
+  glm::vec3 lightDirWorldFaceted = glm::normalize(-currentLightPosFaceted);
   Shadow* shadow = Shadow::instance();
-  glm::mat4 lightSpaceMatrix = shadow->getLightSpaceMatrix(lightDirWorld);
+  glm::mat4 lightSpaceMatrixFaceted = shadow->getLightSpaceMatrix(lightDirWorldFaceted);
 
   // PASS 1: DEPTH MAP
   shadow->bindFBO();
@@ -120,7 +120,7 @@ void render(const Shader& shader_light, const Shader& shader_phong, const Quad& 
   glEnable(GL_DEPTH_TEST);
   
   shader_depth.use();
-  shader_depth.set("lightSpaceMatrix", lightSpaceMatrix);
+  shader_depth.set("lightSpaceMatrixFaceted", lightSpaceMatrixFaceted);
   drawQuad(shader_depth, quad, view, true);
   drawCube(shader_depth, cube, view, true);
   drawPyramid(shader_depth, pyramid, view, true);
@@ -135,7 +135,7 @@ void render(const Shader& shader_light, const Shader& shader_phong, const Quad& 
   shader_light.use();
   shader_light.set("view", view);
   shader_light.set("proj", proj);
-  drawPointLight(shader_light, sphere, currentLightPos, POINT_LIGHT_COLOR);
+  drawPointLight(shader_light, sphere, currentLightPosFaceted, POINT_LIGHT_FACETED_COLOR);
 
   // Render Scene
   shader_phong.use();
@@ -143,19 +143,19 @@ void render(const Shader& shader_light, const Shader& shader_phong, const Quad& 
   shader_phong.set("proj", proj);
 
   // View Space: light position must be multiplied by view matrix
-  shader_phong.set("light.position", glm::vec3(view * glm::vec4(currentLightPos, 1.0f)));
-  shader_phong.set("light.ambient", POINT_LIGHT_COLOR * POINT_LIGHT_INTENSITY * 0.1f);
-  shader_phong.set("light.diffuse", POINT_LIGHT_COLOR * POINT_LIGHT_INTENSITY * 0.8f);
-  shader_phong.set("light.specular", POINT_LIGHT_COLOR * POINT_LIGHT_INTENSITY);
-  shader_phong.set("light.constant", 1.0f);
-  shader_phong.set("light.linear", 0.09f);
-  shader_phong.set("light.quadratic", 0.032f);
+  shader_phong.set("lightFaceted.position", glm::vec3(view * glm::vec4(currentLightPosFaceted, 1.0f)));
+  shader_phong.set("lightFaceted.ambient", POINT_LIGHT_FACETED_COLOR * POINT_LIGHT_FACETED_INTENSITY * 0.1f);
+  shader_phong.set("lightFaceted.diffuse", POINT_LIGHT_FACETED_COLOR * POINT_LIGHT_FACETED_INTENSITY * 0.8f);
+  shader_phong.set("lightFaceted.specular", POINT_LIGHT_FACETED_COLOR * POINT_LIGHT_FACETED_INTENSITY);
+  shader_phong.set("lightFaceted.constant", 1.0f);
+  shader_phong.set("lightFaceted.linear", 0.09f);
+  shader_phong.set("lightFaceted.quadratic", 0.032f);
 
-  shader_phong.set("lightSpaceMatrix", lightSpaceMatrix);
+  shader_phong.set("lightSpaceMatrixFaceted", lightSpaceMatrixFaceted);
   glActiveTexture(GL_TEXTURE2);
   glBindTexture(GL_TEXTURE_2D, shadow->getDepthMap());
-  shader_phong.set("shadowMap", 2);
-  shader_phong.set("shadowIntensity", shadow->getIntensity());
+  shader_phong.set("shadowMapFaceted", 2);
+  shader_phong.set("shadowIntensityFaceted", shadow->getIntensity());
 
   drawQuad(shader_phong, quad, view);
   drawCube(shader_phong, cube, view);

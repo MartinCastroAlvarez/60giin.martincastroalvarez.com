@@ -43,11 +43,11 @@ const int SPHERE_SECTORS = 20;
 const int SPHERE_STACKS = 20;
 
 // LIGHT CONSTANTS
-const glm::vec3 POINT_LIGHT_POSITION(0.0f, 3.0f, 0.0f);
-const glm::vec3 POINT_LIGHT_COLOR(1.0f, 1.0f, 1.0f);
-const float POINT_LIGHT_SPEED = 1.0f;
-const float POINT_LIGHT_RADIUS = 4.0f;
-const float POINT_LIGHT_INTENSITY = 3.0f;
+const glm::vec3 POINT_LIGHT_GOURAUD_POSITION(0.0f, 3.0f, 0.0f);
+const glm::vec3 POINT_LIGHT_GOURAUD_COLOR(1.0f, 1.0f, 1.0f);
+const float POINT_LIGHT_GOURAUD_SPEED = 1.0f;
+const float POINT_LIGHT_GOURAUD_RADIUS = 4.0f;
+const float POINT_LIGHT_GOURAUD_INTENSITY = 3.0f;
 
 Camera camera(CAMERA_POSITION);
 CameraController cameraController(camera);
@@ -99,8 +99,8 @@ void drawPointLight(const Shader& shader_light, const Sphere& sphere, const glm:
 void render(const Shader& shader_light, const Shader& shader_phong, const Quad& quad, const Cube& cube, const Pyramid& pyramid, const Sphere& sphere, float time) {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-  Oscillation lightOscillation(POINT_LIGHT_POSITION, POINT_LIGHT_RADIUS, glm::vec3(POINT_LIGHT_SPEED, 0.0f, POINT_LIGHT_SPEED));
-  glm::vec3 currentLightPos = lightOscillation.getPosition(time);
+  Oscillation lightOscillationGouraud(POINT_LIGHT_GOURAUD_POSITION, POINT_LIGHT_GOURAUD_RADIUS, glm::vec3(POINT_LIGHT_GOURAUD_SPEED, 0.0f, POINT_LIGHT_GOURAUD_SPEED));
+  glm::vec3 currentLightPosGouraud = lightOscillationGouraud.getPosition(time);
 
   glm::mat4 view = camera.getViewMatrix();
   const glm::mat4 proj = glm::perspective(glm::radians(camera.getFOV()), (float)Window::instance()->getWidth() / (float)Window::instance()->getHeight(), camera.getNear(), camera.getFar());
@@ -109,7 +109,7 @@ void render(const Shader& shader_light, const Shader& shader_phong, const Quad& 
   shader_light.use();
   shader_light.set("view", view);
   shader_light.set("proj", proj);
-  drawPointLight(shader_light, sphere, currentLightPos, POINT_LIGHT_COLOR);
+  drawPointLight(shader_light, sphere, currentLightPosGouraud, POINT_LIGHT_GOURAUD_COLOR);
 
   // Render Scene
   shader_phong.use();
@@ -117,13 +117,13 @@ void render(const Shader& shader_light, const Shader& shader_phong, const Quad& 
   shader_phong.set("proj", proj);
 
   // View Space: light position must be multiplied by view matrix
-  shader_phong.set("light.position", glm::vec3(view * glm::vec4(currentLightPos, 1.0f)));
-  shader_phong.set("light.ambient", POINT_LIGHT_COLOR * POINT_LIGHT_INTENSITY * 0.1f);
-  shader_phong.set("light.diffuse", POINT_LIGHT_COLOR * POINT_LIGHT_INTENSITY * 0.8f);
-  shader_phong.set("light.specular", POINT_LIGHT_COLOR * POINT_LIGHT_INTENSITY);
-  shader_phong.set("light.constant", 1.0f);
-  shader_phong.set("light.linear", 0.09f);
-  shader_phong.set("light.quadratic", 0.032f);
+  shader_phong.set("lightGouraud.position", glm::vec3(view * glm::vec4(currentLightPosGouraud, 1.0f)));
+  shader_phong.set("lightGouraud.ambient", POINT_LIGHT_GOURAUD_COLOR * POINT_LIGHT_GOURAUD_INTENSITY * 0.1f);
+  shader_phong.set("lightGouraud.diffuse", POINT_LIGHT_GOURAUD_COLOR * POINT_LIGHT_GOURAUD_INTENSITY * 0.8f);
+  shader_phong.set("lightGouraud.specular", POINT_LIGHT_GOURAUD_COLOR * POINT_LIGHT_GOURAUD_INTENSITY);
+  shader_phong.set("lightGouraud.constant", 1.0f);
+  shader_phong.set("lightGouraud.linear", 0.09f);
+  shader_phong.set("lightGouraud.quadratic", 0.032f);
 
   drawQuad(shader_phong, quad, view);
   drawCube(shader_phong, cube, view);

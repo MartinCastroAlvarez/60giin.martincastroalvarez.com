@@ -8,7 +8,7 @@ out vec3 fragPos;
 out vec3 normal;
 
 out vec4 fragPosLightSpace;
-uniform mat4 lightSpaceMatrix;
+uniform mat4 lightSpaceMatrixPhongBlinn;
 uniform mat4 model;
 uniform mat3 normalMat;
 uniform mat4 view;
@@ -16,7 +16,7 @@ uniform mat4 proj;
 
 void main() {
     vec3 fragPosWorld = vec3(model * vec4(aPos, 1.0));
-    fragPosLightSpace = lightSpaceMatrix * vec4(fragPosWorld, 1.0);
+    fragPosLightSpace = lightSpaceMatrixPhongBlinn * vec4(fragPosWorld, 1.0);
     fragPos = vec3(view * vec4(fragPosWorld, 1.0));
     normal = normalMat * aNormal;
     gl_Position = proj * vec4(fragPos, 1.0);

@@ -49,4 +49,4 @@ set(PROJECT_LIST
     47_Shadow_PointLight_GouraudPhongBlinn
     48_Shadow_PointLight_Faceted
     49_Shadow_PointLight_Difuse
-    )
+)

@@ -9,7 +9,7 @@ out vec3 normal;
 out vec2 uv;
 
 out vec4 fragPosLightSpace;
-uniform mat4 lightSpaceMatrix;
+uniform mat4 lightSpaceMatrixDifuse;
 uniform mat4 model;
 uniform mat3 normalMat;
 uniform mat4 view;
@@ -17,7 +17,7 @@ uniform mat4 proj;
 
 void main() {
     vec3 fragPosWorld = vec3(model * vec4(aPos, 1.0));
-    fragPosLightSpace = lightSpaceMatrix * vec4(fragPosWorld, 1.0);
+    fragPosLightSpace = lightSpaceMatrixDifuse * vec4(fragPosWorld, 1.0);
     fragPos = vec3(view * vec4(fragPosWorld, 1.0));
     normal = normalMat * aNormal;
     uv = aUv;
