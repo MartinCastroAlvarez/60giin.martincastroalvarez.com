@@ -21,6 +21,7 @@
 
 // CAMERA CONSTANTS
 const float CAMERA_SENSITIVITY = 0.2f;
+const glm::vec4 BACKGROUND_DIFUSE_COLOR(0.1f, 0.1f, 0.1f, 1.0f);
 const float CAMERA_SPEED = 10.0f;
 const glm::vec3 CAMERA_POSITION(0.0f, 2.0f, 8.0f);
 
@@ -50,6 +51,12 @@ const glm::vec3 POINT_LIGHT_DIFUSE_COLOR(1.0f, 1.0f, 1.0f);
 const float POINT_LIGHT_DIFUSE_SPEED = 1.0f;
 const float POINT_LIGHT_DIFUSE_RADIUS = 4.0f;
 const float POINT_LIGHT_DIFUSE_INTENSITY = 3.0f;
+
+// SHADOW CONSTANTS
+const float SHADOW_DIFUSE_ORTHO_BOX_SIZE = 10.0f;
+const float SHADOW_DIFUSE_DISTANCE = 10.0f;
+const float SHADOW_DIFUSE_INTENSITY = 0.8f;
+
 
 Camera camera(CAMERA_POSITION);
 CameraController cameraController(camera);
@@ -183,7 +190,7 @@ int main(int argc, char* argv[]) {
 
   stbi_set_flip_vertically_on_load(true);
 
-  glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+  glClearColor(BACKGROUND_DIFUSE_COLOR.r, BACKGROUND_DIFUSE_COLOR.g, BACKGROUND_DIFUSE_COLOR.b, BACKGROUND_DIFUSE_COLOR.a);
 
   const Quad quad = Quad(QUAD_SIZE);
   const Cube cube = Cube(CUBE_SIZE);
@@ -199,9 +206,9 @@ int main(int argc, char* argv[]) {
 
   Shadow* shadow = Shadow::instance();
   shadow->init();
-  shadow->setOrthoBoxSize(10.0f);
-  shadow->setDistance(10.0f);
-  shadow->setIntensity(0.8f);
+  shadow->setOrthoBoxSize(SHADOW_DIFUSE_ORTHO_BOX_SIZE);
+  shadow->setDistance(SHADOW_DIFUSE_DISTANCE);
+  shadow->setIntensity(SHADOW_DIFUSE_INTENSITY);
 
   camera.setMouseSensitivity(CAMERA_SENSITIVITY);
   camera.setMovementSpeed(CAMERA_SPEED);

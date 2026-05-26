@@ -16,6 +16,7 @@
 
 // CAMERA CONSTANTS
 const float CAMERA_SENSITIVITY = 0.2f;
+const glm::vec4 BACKGROUND_GOURAUD_COLOR(0.1f, 0.1f, 0.1f, 1.0f);
 const float CAMERA_SPEED = 10.0f;
 const glm::vec3 CAMERA_POSITION(0.0f, 2.0f, 8.0f);
 
@@ -134,7 +135,7 @@ int main(int argc, char* argv[]) {
   Window* window = Window::instance();
   window->setCaptureMouse(true);
 
-  glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+  glClearColor(BACKGROUND_GOURAUD_COLOR.r, BACKGROUND_GOURAUD_COLOR.g, BACKGROUND_GOURAUD_COLOR.b, BACKGROUND_GOURAUD_COLOR.a);
 
   const Quad quad = Quad(QUAD_SIZE);
   const Cube cube = Cube(CUBE_SIZE);

@@ -20,6 +20,7 @@
 
 // CAMERA CONSTANTS
 const float CAMERA_SENSITIVITY = 0.2f;
+const glm::vec4 BACKGROUND_DIFUSE_COLOR(0.1f, 0.1f, 0.1f, 1.0f);
 const float CAMERA_SPEED = 10.0f;
 const glm::vec3 CAMERA_POSITION(0.0f, 2.0f, 8.0f);
 
@@ -138,7 +139,7 @@ int main(int argc, char* argv[]) {
 
   stbi_set_flip_vertically_on_load(true);
 
-  glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+  glClearColor(BACKGROUND_DIFUSE_COLOR.r, BACKGROUND_DIFUSE_COLOR.g, BACKGROUND_DIFUSE_COLOR.b, BACKGROUND_DIFUSE_COLOR.a);
 
   const Quad quad = Quad(QUAD_SIZE);
   const Cube cube = Cube(CUBE_SIZE);

@@ -17,6 +17,7 @@
 
 // CAMERA CONSTANTS
 const float CAMERA_SENSITIVITY = 0.2f;
+const glm::vec4 BACKGROUND_FACETED_COLOR(0.1f, 0.1f, 0.1f, 1.0f);
 const float CAMERA_SPEED = 10.0f;
 const glm::vec3 CAMERA_POSITION(0.0f, 2.0f, 8.0f);
 
@@ -49,6 +50,12 @@ const glm::vec3 POINT_LIGHT_FACETED_COLOR(1.0f, 1.0f, 1.0f);
 const float POINT_LIGHT_FACETED_SPEED = 1.0f;
 const float POINT_LIGHT_FACETED_RADIUS = 4.0f;
 const float POINT_LIGHT_FACETED_INTENSITY = 3.0f;
+
+// SHADOW CONSTANTS
+const float SHADOW_FACETED_ORTHO_BOX_SIZE = 10.0f;
+const float SHADOW_FACETED_DISTANCE = 10.0f;
+const float SHADOW_FACETED_INTENSITY = 3.8f;
+
 
 Camera camera(CAMERA_POSITION);
 CameraController cameraController(camera);
@@ -166,7 +173,7 @@ int main(int argc, char* argv[]) {
   Window* window = Window::instance();
   window->setCaptureMouse(true);
 
-  glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+  glClearColor(BACKGROUND_FACETED_COLOR.r, BACKGROUND_FACETED_COLOR.g, BACKGROUND_FACETED_COLOR.b, BACKGROUND_FACETED_COLOR.a);
 
   const Quad quad = Quad(QUAD_SIZE);
   const Cube cube = Cube(CUBE_SIZE);
@@ -179,9 +186,9 @@ int main(int argc, char* argv[]) {
 
   Shadow* shadow = Shadow::instance();
   shadow->init();
-  shadow->setOrthoBoxSize(10.0f);
-  shadow->setDistance(10.0f);
-  shadow->setIntensity(0.8f);
+  shadow->setOrthoBoxSize(SHADOW_FACETED_ORTHO_BOX_SIZE);
+  shadow->setDistance(SHADOW_FACETED_DISTANCE);
+  shadow->setIntensity(SHADOW_FACETED_INTENSITY);
 
   camera.setMouseSensitivity(CAMERA_SENSITIVITY);
   camera.setMovementSpeed(CAMERA_SPEED);
