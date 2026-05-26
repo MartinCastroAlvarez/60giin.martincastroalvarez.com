@@ -21,21 +21,21 @@ uniform vec3 objectColor;
 void main() {
 	vec3 ambient = objectColor * light.ambient;
 
-	vec3 norm = normalize(normal);
-	vec3 lightDir = light.position - fragPos;
-	float dist = length(lightDir);
-	lightDir = normalize(lightDir);
+	vec3 normalVector = normalize(normal);
+	vec3 lightDirection = light.position - fragPos;
+	float distanceToLight = length(lightDirection);
+	lightDirection = normalize(lightDirection);
 
-	float attenuation = 1.0 / (light.constant + light.linear * dist + light.quadratic * (dist * dist));
+	float attenuation = 1.0 / (light.constant + light.linear * distanceToLight + light.quadratic * (distanceToLight * distanceToLight));
 
-	float diff = max(dot(norm, lightDir), 0.0);
-	vec3 diffuse = diff * objectColor * light.diffuse;
+	float diffuseFactor = max(dot(normalVector, lightDirection), 0.0);
+	vec3 diffuse = diffuseFactor * objectColor * light.diffuse;
 
 	// Blinn-Phong in View Space
-	vec3 viewDir = normalize(-fragPos); // Camera is at (0,0,0)
-	vec3 halfwayDir = normalize(lightDir + viewDir);
-	float spec = pow(max(dot(norm, halfwayDir), 0.0), 64.0);
-	vec3 specular = spec * vec3(1.0) * light.specular;
+	vec3 viewDirection = normalize(-fragPos); // Camera is at (0,0,0)
+	vec3 halfwayDirection = normalize(lightDirection + viewDirection);
+	float specularFactor = pow(max(dot(normalVector, halfwayDirection), 0.0), 64.0);
+	vec3 specular = specularFactor * vec3(1.0) * light.specular;
 
 	vec3 phong = (ambient + diffuse + specular) * attenuation;
 	FragColor = vec4(phong, 1.0);
