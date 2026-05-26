@@ -4,12 +4,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
-
 #include "engine/window.hpp"
 #include "engine/shader.hpp"
-#include "engine/texture.hpp"
 #include "engine/camera.hpp"
 #include "engine/camera_controller.hpp"
 #include "engine/geometry/cube.hpp"
@@ -17,6 +13,7 @@
 #include "engine/geometry/sphere.hpp"
 #include "engine/geometry/pyramid.hpp"
 #include "engine/oscillation.hpp"
+#include "engine/shadow.hpp"
 
 // CAMERA CONSTANTS
 const float CAMERA_SENSITIVITY = 0.2f;
@@ -27,16 +24,19 @@ const glm::vec3 CAMERA_POSITION(0.0f, 2.0f, 8.0f);
 const float QUAD_SIZE = 1.0f;
 const glm::vec3 FLOOR_POSITION(0.0f, -1.0f, 0.0f);
 const glm::vec3 FLOOR_SCALE(10.0f);
+const glm::vec3 FLOOR_COLOR(1.0f, 1.0f, 1.0f); // White
 
 // CUBE CONSTANTS
 const float CUBE_SIZE = 1.0f;
 const glm::vec3 CUBE_POSITION(-2.0f, -0.5f, 0.0f);
 const glm::vec3 CUBE_SCALE(1.0f);
+const glm::vec3 CUBE_COLOR(1.0f, 0.0f, 0.0f); // Red
 
 // PYRAMID CONSTANTS
 const float PYRAMID_SIZE = 1.0f;
 const glm::vec3 PYRAMID_POSITION(2.0f, -0.5f, 0.0f);
 const glm::vec3 PYRAMID_SCALE(1.0f);
+const glm::vec3 PYRAMID_COLOR(0.0f, 0.0f, 1.0f); // Blue
 
 // SPHERE CONSTANTS
 const float SPHERE_RADIUS = 1.0f;
@@ -57,31 +57,38 @@ void handleInput(const float deltaTime) {
   cameraController.handleInput(deltaTime);
 }
 
-void drawQuad(const Shader& shader, const Quad& quad, const glm::mat4& view) {
+void drawQuad(const Shader& shader, const Quad& quad, const glm::mat4& view, bool isDepth = false) {
   glm::mat4 model = glm::mat4(1.0f);
   model = glm::translate(model, FLOOR_POSITION);
   model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
   model = glm::scale(model, FLOOR_SCALE);
   shader.set("model", model);
   shader.set("normalMat", glm::transpose(glm::inverse(glm::mat3(view * model))));
+  shader.set("objectColor", FLOOR_COLOR);
   quad.render();
 }
 
-void drawCube(const Shader& shader, const Cube& cube, const glm::mat4& view) {
+void drawCube(const Shader& shader, const Cube& cube, const glm::mat4& view, bool isDepth = false) {
   glm::mat4 model = glm::mat4(1.0f);
   model = glm::translate(model, CUBE_POSITION);
   model = glm::scale(model, CUBE_SCALE);
   shader.set("model", model);
-  shader.set("normalMat", glm::transpose(glm::inverse(glm::mat3(view * model))));
+  if (!isDepth) {
+    shader.set("normalMat", glm::transpose(glm::inverse(glm::mat3(view * model))));
+    shader.set("objectColor", CUBE_COLOR);
+  }
   cube.render();
 }
 
-void drawPyramid(const Shader& shader, const Pyramid& pyramid, const glm::mat4& view) {
+void drawPyramid(const Shader& shader, const Pyramid& pyramid, const glm::mat4& view, bool isDepth = false) {
   glm::mat4 model = glm::mat4(1.0f);
   model = glm::translate(model, PYRAMID_POSITION);
   model = glm::scale(model, PYRAMID_SCALE);
   shader.set("model", model);
-  shader.set("normalMat", glm::transpose(glm::inverse(glm::mat3(view * model))));
+  if (!isDepth) {
+    shader.set("normalMat", glm::transpose(glm::inverse(glm::mat3(view * model))));
+    shader.set("objectColor", PYRAMID_COLOR);
+  }
   pyramid.render();
 }
 
@@ -94,7 +101,7 @@ void drawPointLight(const Shader& shader_light, const Sphere& sphere, const glm:
   sphere.render();
 }
 
-void render(const Shader& shader_light, const Shader& shader_phong, const Quad& quad, const Cube& cube, const Pyramid& pyramid, const Sphere& sphere, const Texture& t_albedo, const Texture& t_specular, float time) {
+void render(const Shader& shader_light, const Shader& shader_phong, const Quad& quad, const Cube& cube, const Pyramid& pyramid, const Sphere& sphere, const Shader& shader_depth, float time) {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   Oscillation lightOscillation(POINT_LIGHT_POSITION, POINT_LIGHT_RADIUS, glm::vec3(POINT_LIGHT_SPEED, 0.0f, POINT_LIGHT_SPEED));
@@ -102,6 +109,27 @@ void render(const Shader& shader_light, const Shader& shader_phong, const Quad& 
 
   glm::mat4 view = camera.getViewMatrix();
   const glm::mat4 proj = glm::perspective(glm::radians(camera.getFOV()), (float)Window::instance()->getWidth() / (float)Window::instance()->getHeight(), camera.getNear(), camera.getFar());
+
+  glm::vec3 lightDirWorld = glm::normalize(-currentLightPos);
+  Shadow* shadow = Shadow::instance();
+  glm::mat4 lightSpaceMatrix = shadow->getLightSpaceMatrix(lightDirWorld);
+
+  // PASS 1: DEPTH MAP
+  shadow->bindFBO();
+  glClear(GL_DEPTH_BUFFER_BIT);
+  glEnable(GL_DEPTH_TEST);
+  
+  shader_depth.use();
+  shader_depth.set("lightSpaceMatrix", lightSpaceMatrix);
+  drawQuad(shader_depth, quad, view, true);
+  drawCube(shader_depth, cube, view, true);
+  drawPyramid(shader_depth, pyramid, view, true);
+
+  // PASS 2: RENDER
+  int fbWidth, fbHeight;
+  glfwGetFramebufferSize(Window::instance()->getNativeWindow(), &fbWidth, &fbHeight);
+  shadow->unbindFBO(fbWidth, fbHeight);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   // Render Point Light
   shader_light.use();
@@ -123,9 +151,11 @@ void render(const Shader& shader_light, const Shader& shader_phong, const Quad& 
   shader_phong.set("light.linear", 0.09f);
   shader_phong.set("light.quadratic", 0.032f);
 
-  t_albedo.use(shader_phong, "material.diffuse", 0);
-  t_specular.use(shader_phong, "material.specular", 1);
-  shader_phong.set("material.shininess", 64);
+  shader_phong.set("lightSpaceMatrix", lightSpaceMatrix);
+  glActiveTexture(GL_TEXTURE2);
+  glBindTexture(GL_TEXTURE_2D, shadow->getDepthMap());
+  shader_phong.set("shadowMap", 2);
+  shader_phong.set("shadowIntensity", shadow->getIntensity());
 
   drawQuad(shader_phong, quad, view);
   drawCube(shader_phong, cube, view);
@@ -136,8 +166,6 @@ int main(int argc, char* argv[]) {
   Window* window = Window::instance();
   window->setCaptureMouse(true);
 
-  stbi_set_flip_vertically_on_load(true);
-
   glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 
   const Quad quad = Quad(QUAD_SIZE);
@@ -145,11 +173,15 @@ int main(int argc, char* argv[]) {
   const Pyramid pyramid = Pyramid(PYRAMID_SIZE);
   const Sphere sphere = Sphere(SPHERE_RADIUS, SPHERE_SECTORS, SPHERE_STACKS);
 
-  const Texture t_albedo(ASSETS_PATH "textures/bricks_albedo.png", Texture::Format::RGB);
-  const Texture t_specular(ASSETS_PATH "textures/bricks_specular.png", Texture::Format::RGB);
-
   const Shader shader_light(PROJECT_PATH "light.vert", PROJECT_PATH "light.frag");
   const Shader shader_phong(PROJECT_PATH "phong.vert", PROJECT_PATH "phong.frag");
+  const Shader shader_depth(PROJECT_PATH "depth.vert", PROJECT_PATH "depth.frag");
+
+  Shadow* shadow = Shadow::instance();
+  shadow->init();
+  shadow->setOrthoBoxSize(10.0f);
+  shadow->setDistance(10.0f);
+  shadow->setIntensity(0.8f);
 
   camera.setMouseSensitivity(CAMERA_SENSITIVITY);
   camera.setMovementSpeed(CAMERA_SPEED);
@@ -167,7 +199,7 @@ int main(int argc, char* argv[]) {
     lastFrame = currentFrame;
 
     handleInput(deltaTime);
-    render(shader_light, shader_phong, quad, cube, pyramid, sphere, t_albedo, t_specular, currentFrame);
+    render(shader_light, shader_phong, quad, cube, pyramid, sphere, shader_depth, currentFrame);
     window->frame();
   }
 

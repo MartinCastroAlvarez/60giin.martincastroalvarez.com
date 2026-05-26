@@ -45,4 +45,8 @@ set(PROJECT_LIST
     43_PointLight_GouraudPhongBlinn
     44_PointLight_Faceted
     45_PointLight_Difuse
+    46_Shadow_PointLight_PhongBlinn
+    47_Shadow_PointLight_GouraudPhongBlinn
+    48_Shadow_PointLight_Faceted
+    49_Shadow_PointLight_Difuse
     )

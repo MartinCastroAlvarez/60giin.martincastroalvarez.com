@@ -27,13 +27,13 @@ const glm::vec3 FLOOR_COLOR(1.0f, 1.0f, 1.0f); // White
 
 // CUBE CONSTANTS
 const float CUBE_SIZE = 1.0f;
-const glm::vec3 CUBE_POSITION(-2.0f, 0.0f, 0.0f);
+const glm::vec3 CUBE_POSITION(-2.0f, -0.5f, 0.0f);
 const glm::vec3 CUBE_SCALE(1.0f);
 const glm::vec3 CUBE_COLOR(1.0f, 0.0f, 0.0f); // Red
 
 // PYRAMID CONSTANTS
 const float PYRAMID_SIZE = 1.0f;
-const glm::vec3 PYRAMID_POSITION(2.0f, 0.0f, 0.0f);
+const glm::vec3 PYRAMID_POSITION(2.0f, -0.5f, 0.0f);
 const glm::vec3 PYRAMID_SCALE(1.0f);
 const glm::vec3 PYRAMID_COLOR(0.0f, 0.0f, 1.0f); // Blue
 
