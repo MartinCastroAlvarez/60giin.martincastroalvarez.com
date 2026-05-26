@@ -41,4 +41,8 @@ set(PROJECT_LIST
     39_Colors_Horus_ViewPort_Sun_Shadow_Class_NormalMapping_ShadowMap_Sensitive_ToggleFlashLight_AllLights_ViewSpace
     40_Actividad3_Horus
     41_DirectionalLight_Colors_Horus_ViewPort_Sun_Shadow_Class_NormalMapping_ShadowMap_Sensitive_ToggleFlashLight_AllLights_ViewSpace
+    42_PointLight_PhongBlinn
+    43_PointLight_GouraudPhongBlinn
+    44_PointLight_Faceted
+    45_PointLight_Difuse
     )
