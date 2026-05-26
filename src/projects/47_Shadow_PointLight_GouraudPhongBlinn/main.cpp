@@ -120,9 +120,10 @@ void render(const Shader& shader_light, const Shader& shader_phong, const Quad& 
   glm::vec3 lightDirWorldGouraud = glm::normalize(-currentLightPosGouraud);
   Shadow* shadow = Shadow::instance();
   glm::mat4 lightSpaceMatrixGouraud = shadow->getLightSpaceMatrix(lightDirWorldGouraud);
-
+  // ========================================================================
   // PASS 1: DEPTH MAP
-  shadow->bindFBO();
+  // ========================================================================
+shadow->bindFBO();
   glClear(GL_DEPTH_BUFFER_BIT);
   glEnable(GL_DEPTH_TEST);
   
@@ -131,9 +132,10 @@ void render(const Shader& shader_light, const Shader& shader_phong, const Quad& 
   drawQuad(shader_depth, quad, view, true);
   drawCube(shader_depth, cube, view, true);
   drawPyramid(shader_depth, pyramid, view, true);
-
+  // ========================================================================
   // PASS 2: RENDER
-  int fbWidth, fbHeight;
+  // ========================================================================
+int fbWidth, fbHeight;
   glfwGetFramebufferSize(Window::instance()->getNativeWindow(), &fbWidth, &fbHeight);
   shadow->unbindFBO(fbWidth, fbHeight);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
