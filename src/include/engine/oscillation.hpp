@@ -13,7 +13,7 @@ public:
         return _position + _radius * glm::vec3(
             _speed.x != 0.0f ? std::sin(time * _speed.x) : 0.0f,
             _speed.y != 0.0f ? std::sin(time * _speed.y) : 0.0f,
-            _speed.z != 0.0f ? std::sin(time * _speed.z) : 0.0f
+            _speed.z != 0.0f ? std::cos(time * _speed.z) : 0.0f
         );
     }
 
