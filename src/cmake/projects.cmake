@@ -50,4 +50,5 @@ set(PROJECT_LIST
     48_Shadow_PointLight_Faceted
     49_Shadow_PointLight_Difuse
     50_SolarSystem
+    51_Exam_MartinCastroAlvarez
 )
